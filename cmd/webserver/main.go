@@ -27,6 +27,8 @@ func main() {
 	clog := logger.L
 	r := gin.New()
 	router.RegisterRoutes(r)
+	portD := os.Getenv("WEB_DEMO_PORT")
+	clog.Info("port", zap.String("port", portD))
 	port := os.Getenv("WEB_PORT_ENV")
 	if port == "" {
 		port = "8080"
