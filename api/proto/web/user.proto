@@ -1,0 +1,11 @@
+syntax = "proto3";
+//option go_package = "./api/pb/web;pb_web";
+option go_package = "/web;pb_web";
+package web;
+
+message SyncUserInfoReq{
+
+}
+message SyncUserInfoResp{
+
+}

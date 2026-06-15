@@ -1,0 +1,11 @@
+syntax = "proto3";
+//option go_package = "./push/pb/push;pb_push";
+option go_package = "/push;pb_push";
+package push;
+
+message SyncUserInfoReq{
+
+}
+message SyncUserInfoResp{
+
+}
