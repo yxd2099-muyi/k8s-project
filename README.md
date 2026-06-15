@@ -1,6 +1,21 @@
 # k8s-project
 k8s learning 项目
 
+# 执行不同的 makefile
+必须在【项目根目录】执行，指定 make 文件：
+```shell
+# 本地运行
+make -f deploy/web/Makefile run-local
+
+# 构建镜像
+make -f deploy/web/Makefile build
+
+# 打包分发k8s节点
+make -f deploy/web/Makefile push-k8s-node
+
+# 清理
+make -f deploy/web/Makefile clean
+```
 # 目录
 
 ```text

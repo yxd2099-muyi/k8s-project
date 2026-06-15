@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/k8s/muyi/internal/web/router"
 	"github.com/k8s/muyi/shared/infra/config"
@@ -23,18 +24,23 @@ func main() {
 	}
 	zlogger := logger.NewLogger()
 	defer zlogger.Close()
+	clog := logger.L
 	r := gin.New()
 	router.RegisterRoutes(r)
+	port := os.Getenv("WEB_PORT_ENV")
+	if port == "" {
+		port = "8080"
+	}
 	srv := &http.Server{
-		Addr:    ":8080",
+		Addr:    fmt.Sprintf(":%s", port),
 		Handler: r,
 	}
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.L.Fatal("listen err", zap.Error(err))
+			clog.Fatal("listen err", zap.Error(err))
 		}
 	}()
-	logger.L.Info("service start success, env:" + config.GetEnv())
+	clog.Info("service start success, env:" + config.GetEnv())
 	// 优雅关闭
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -42,7 +48,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.L.Error("server shutdown err", zap.Error(err))
+		clog.Error("server shutdown err", zap.Error(err))
 	}
-	logger.L.Info("service exit complete")
+	clog.Info("service exit complete")
 }

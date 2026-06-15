@@ -1,0 +1,18 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: local-lb-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    # 选网段内未占用的空闲IP段，避开10/11/12节点IP
+    - 192.168.96.200-192.168.96.210
+---
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - local-lb-pool

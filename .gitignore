@@ -31,3 +31,5 @@ go.work.sum
 # .idea/
  .vscode/
 .idea/
+cmd/webserver/runtime/
+k8s-web.tar

@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-web
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: k8s-web
+  template:
+    metadata:
+      labels:
+        app: k8s-web
+    spec:
+      # 污点容忍：不调度master控制平面
+      tolerations: []
+      containers:
+        - name: k8s-web
+          image: k8s-web:v1.0.0
+          imagePullPolicy: Never # 本地镜像不拉取仓库
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: "k8s"
+            # 从Secret注入敏感环境变量
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: JWT_SECRET
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: REDIS_PASSWORD
+            - name: MYSQL_USER
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: MYSQL_USER
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: MYSQL_PASSWORD
+            - name: ETCD_USER
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: ETCD_USER
+            - name: ETCD_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: k8s-web-secret
+                  key: ETCD_PASSWORD
+          # K8s 完整三大探针
+          startupProbe:
+            httpGet:
+              path: /health/startup
+              port: 8080
+            failureThreshold: 30
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health/liveness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          # 挂载ConfigMap配置文件
+          volumeMounts:
+            - name: config-volume
+              mountPath: /app/config
+      volumes:
+        - name: config-volume
+          configMap:
+            name: k8s-web-cm

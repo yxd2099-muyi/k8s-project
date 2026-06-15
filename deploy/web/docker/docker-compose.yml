@@ -1,0 +1,10 @@
+services:
+  k8s-web-builder:
+    build:
+      # 上下文定位到项目根
+      context: ../../../
+      # Dockerfile 完整相对根路径
+      dockerfile: ./deploy/web/docker/Dockerfile
+    image: k8s-web:v1.0.0
+    container_name: k8s-web-build
+    restart: no
