@@ -162,9 +162,13 @@ func (c *ClientConn) Close() {
 // handleClientFrame 外部注入：交给gate服务处理ws帧
 var handleClientFrame func(frame *pb_base.WsFrame)
 
-func (c *ClientConn) RegisterFrameHandler(f func(frame *pb_base.WsFrame)) {
+func RegisterFrameHandler(f func(frame *pb_base.WsFrame)) {
 	handleClientFrame = f
 }
+
+//	func (c *ClientConn) RegisterFrameHandler(f func(frame *pb_base.WsFrame)) {
+//		handleClientFrame = f
+//	}
 func (c *ClientConn) handleClientFrame(frame *pb_base.WsFrame) {
 	if handleClientFrame != nil {
 		handleClientFrame(frame)
