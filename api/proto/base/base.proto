@@ -52,9 +52,9 @@ message ReqBody {
 
 // 网关响应体 (body填充)
 message RespBody {
-  uint32 cmd = 1;
-  uint64 roomId = 2;// 房间号
-  bytes payload = 3; // 实际返回业务数据
+//  uint32 cmd = 1;
+//  uint64 roomId = 2;// 房间号
+  bytes payload = 1; // 实际返回业务数据
 }
 
 // 服务推送体 (Game->Gate->Client)

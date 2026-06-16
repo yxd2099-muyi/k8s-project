@@ -155,6 +155,9 @@ func GetWebServerCfg() Web {
 func GetGameServerCfg() Game {
 	return GlobalConf.Game
 }
+func GetRedisCfg() Redis {
+	return GlobalConf.Redis
+}
 
 // GetPodInfo 读取k8s环境变量 POD_NAME POD_IP
 func GetPodInfo() (podName, podIP string) {
