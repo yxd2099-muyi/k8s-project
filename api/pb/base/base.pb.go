@@ -244,6 +244,7 @@ type WsFrame struct {
 	ErrMsg        string                 `protobuf:"bytes,6,opt,name=err_msg,json=errMsg,proto3" json:"err_msg,omitempty"`                               // 错误详情
 	Payload       []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`                                           // 业务子消息序列化数据
 	Timestamp     int64                  `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                                      // 客户端原样ts
+	RoomId        uint64                 `protobuf:"varint,9,opt,name=roomId,proto3" json:"roomId,omitempty"`                                            //房间号
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -334,12 +335,20 @@ func (x *WsFrame) GetTimestamp() int64 {
 	return 0
 }
 
+func (x *WsFrame) GetRoomId() uint64 {
+	if x != nil {
+		return x.RoomId
+	}
+	return 0
+}
+
 // 客户端请求体 (body填充)
 type ReqBody struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cmd           uint32                 `protobuf:"varint,1,opt,name=cmd,proto3" json:"cmd,omitempty"` // 业务指令:1进房 2发消息 3退房 在 业务中也用 枚举定义 比直接约定 1，2，3 这种要好
-	Uid           uint64                 `protobuf:"varint,4,opt,name=uid,proto3" json:"uid,omitempty"`
-	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"` // 业务参数结构体
+	Uid           uint64                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
+	RoomId        uint64                 `protobuf:"varint,3,opt,name=roomId,proto3" json:"roomId,omitempty"`  // 房间号
+	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"` // 业务参数结构体
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -388,6 +397,13 @@ func (x *ReqBody) GetUid() uint64 {
 	return 0
 }
 
+func (x *ReqBody) GetRoomId() uint64 {
+	if x != nil {
+		return x.RoomId
+	}
+	return 0
+}
+
 func (x *ReqBody) GetPayload() []byte {
 	if x != nil {
 		return x.Payload
@@ -399,7 +415,8 @@ func (x *ReqBody) GetPayload() []byte {
 type RespBody struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cmd           uint32                 `protobuf:"varint,1,opt,name=cmd,proto3" json:"cmd,omitempty"`
-	Payload       []byte                 `protobuf:"bytes,2,opt,name=payload,proto3" json:"payload,omitempty"` // 实际返回业务数据
+	RoomId        uint64                 `protobuf:"varint,2,opt,name=roomId,proto3" json:"roomId,omitempty"`  // 房间号
+	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"` // 实际返回业务数据
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -437,6 +454,13 @@ func (*RespBody) Descriptor() ([]byte, []int) {
 func (x *RespBody) GetCmd() uint32 {
 	if x != nil {
 		return x.Cmd
+	}
+	return 0
+}
+
+func (x *RespBody) GetRoomId() uint64 {
+	if x != nil {
+		return x.RoomId
 	}
 	return 0
 }
@@ -505,7 +529,7 @@ var File_base_base_proto protoreflect.FileDescriptor
 
 const file_base_base_proto_rawDesc = "" +
 	"\n" +
-	"\x0fbase/base.proto\x12\x04base\"\x88\x02\n" +
+	"\x0fbase/base.proto\x12\x04base\"\xa0\x02\n" +
 	"\aWsFrame\x12.\n" +
 	"\n" +
 	"frame_type\x18\x01 \x01(\x0e2\x0f.base.FrameTypeR\tframeType\x12.\n" +
@@ -516,14 +540,17 @@ const file_base_base_proto_rawDesc = "" +
 	"\berr_code\x18\x05 \x01(\x0e2\r.base.ErrCodeR\aerrCode\x12\x17\n" +
 	"\aerr_msg\x18\x06 \x01(\tR\x06errMsg\x12\x18\n" +
 	"\apayload\x18\a \x01(\fR\apayload\x12\x1c\n" +
-	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\"G\n" +
+	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\x12\x16\n" +
+	"\x06roomId\x18\t \x01(\x04R\x06roomId\"_\n" +
 	"\aReqBody\x12\x10\n" +
 	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x10\n" +
-	"\x03uid\x18\x04 \x01(\x04R\x03uid\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\"6\n" +
+	"\x03uid\x18\x02 \x01(\x04R\x03uid\x12\x16\n" +
+	"\x06roomId\x18\x03 \x01(\x04R\x06roomId\x12\x18\n" +
+	"\apayload\x18\x04 \x01(\fR\apayload\"N\n" +
 	"\bRespBody\x12\x10\n" +
-	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x18\n" +
-	"\apayload\x18\x02 \x01(\fR\apayload\"6\n" +
+	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x16\n" +
+	"\x06roomId\x18\x02 \x01(\x04R\x06roomId\x12\x18\n" +
+	"\apayload\x18\x03 \x01(\fR\apayload\"6\n" +
 	"\bPushBody\x12\x10\n" +
 	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload*U\n" +

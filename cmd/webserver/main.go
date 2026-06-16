@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/gin-gonic/gin"
 	"github.com/k8s/muyi/internal/web/router"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
@@ -17,6 +18,14 @@ import (
 	"time"
 )
 
+func getPort() string {
+	portD := os.Getenv(cconst.WEB_PORT)
+	if portD == "" {
+		cfg := config.GetWebServerCfg()
+		portD = cfg.Port
+	}
+	return portD
+}
 func main() {
 	err := config.Init()
 	if err != nil {
@@ -27,12 +36,7 @@ func main() {
 	clog := logger.L
 	r := gin.New()
 	router.RegisterRoutes(r)
-	portD := os.Getenv("WEB_DEMO_PORT")
-	clog.Info("port", zap.String("port", portD))
-	port := os.Getenv("WEB_PORT_ENV")
-	if port == "" {
-		port = "8080"
-	}
+	port := getPort()
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%s", port),
 		Handler: r,

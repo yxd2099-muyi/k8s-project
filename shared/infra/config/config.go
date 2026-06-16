@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"os"
 	"time"
 
@@ -32,6 +33,9 @@ type Conf struct {
 	Mysql      Mysql      `mapstructure:"mysql"`
 	Log        Log        `mapstructure:"log"`
 	Etcd       Etcd       `mapstructure:"etcd"`
+	Gate       Gate       `mapstructure:"gate"`
+	Game       Game       `mapstructure:"game"`
+	Web        Web        `mapstructure:"web"`
 }
 
 type ServerInfo struct {
@@ -140,4 +144,21 @@ func GetEnv() string {
 		return EnvLocal
 	}
 	return env
+}
+
+func GetGateServerCfg() Gate {
+	return GlobalConf.Gate
+}
+func GetWebServerCfg() Web {
+	return GlobalConf.Web
+}
+func GetGameServerCfg() Game {
+	return GlobalConf.Game
+}
+
+// GetPodInfo 读取k8s环境变量 POD_NAME POD_IP
+func GetPodInfo() (podName, podIP string) {
+	podName = os.Getenv(cconst.ENV_POD_NAME)
+	podIP = os.Getenv(cconst.ENV_POD_NAME)
+	return
 }

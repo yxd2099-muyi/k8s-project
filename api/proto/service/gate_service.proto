@@ -6,7 +6,7 @@ import "base/base.proto";
 gateserver 提供服务
  */
 
-// Gate 提供给 Game 的推送服务（题目指定一元RPC Push）
+// Gate 提供给 Game 的推送服务
 service GatePush {
   rpc Push(PushReq) returns (PushResp);
 }
