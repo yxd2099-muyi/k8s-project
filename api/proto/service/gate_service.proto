@@ -1,0 +1,21 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/k8s-project/api/pb/service;pb_service";
+package service;
+import "base/base.proto";
+/**
+gateserver 提供服务
+ */
+
+// Gate 提供给 Game 的推送服务（题目指定一元RPC Push）
+service GatePush {
+  rpc Push(PushReq) returns (PushResp);
+}
+
+///--------------push 请求
+message PushReq{
+  base.PushBody body = 1;//推送基础数据
+  repeated uint64 uids = 2;// 推送目标uid 列表 正常至少有一个元素。 如果为空 全服推送
+}
+message PushResp{
+  int32 code = 1;
+}

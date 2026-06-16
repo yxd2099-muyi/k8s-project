@@ -1,0 +1,22 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/k8s-project/api/pb/service;pb_service";
+package service;
+import "base/base.proto";
+/**
+gameserver 提供服务
+ */
+
+
+// Game 提供给 Gate 的转发服务
+service GameLogic {
+  rpc ForwardClientMsg(ForwardReq) returns (ForwardRsp);
+}
+
+message ForwardReq{
+    base.ReqBody req = 1;//请求参数
+}
+message ForwardRsp{
+  base.ErrCode code = 1;
+  string msg = 2;
+  base.RespBody body =3;// 返回数据结构体
+}

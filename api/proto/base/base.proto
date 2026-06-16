@@ -1,0 +1,62 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/api/pb/base;pb_base";
+package base;
+
+// 消息大类
+enum FrameType {
+  FRAME_UNKNOWN = 0;
+  FRAME_REQUEST = 1;  // 客户端主动请求
+  FRAME_RESPONSE = 2; // 网关回包响应
+  FRAME_PUSH = 3;     // 服务端主动推送
+}
+//业务大类
+enum FirstKind{
+  FIRST_UNKNOW = 0;
+  FIRST_ROOM = 1; //路由到room 服务
+  FIRST_GUILD = 2;//路由到guild 公会服务
+}
+// 业务小类接口
+enum CmdKind{
+  Cmd_UNKNOW = 0;
+  CMD_CREATE_ROOM = 1;// 创建房间
+}
+// 全局错误码
+enum ErrCode {
+  EC_OK = 0;
+  EC_INTERNAL_ERR = 10001;
+  EC_PARAM_INVALID = 10002;
+  EC_USER_NOT_LOGIN = 10003;
+  EC_ROOM_NOT_EXIST = 10004;
+  EC_ROOM_FULL = 10005;
+  EC_GAME_SERVER_UNAVAIL = 10006;
+}
+// 顶层统一包裹帧
+message WsFrame {
+  FrameType frame_type = 1;//
+  FirstKind first_kind = 2;//
+  uint64 seq = 3;        // 请求序列号，响应原样带回，客户端异步匹配
+  uint64 uid = 4;        // 用户ID
+  ErrCode err_code = 5;  // 错误码
+  string err_msg = 6;    // 错误详情
+  bytes payload = 7;        // 业务子消息序列化数据
+  int64 timestamp = 8;// 客户端原样ts
+}
+// 客户端请求体 (body填充)
+message ReqBody {
+  uint32 cmd = 1;        // 业务指令:1进房 2发消息 3退房 在 业务中也用 枚举定义 比直接约定 1，2，3 这种要好
+  uint64 uid = 4;
+  bytes payload = 2;        // 业务参数结构体
+}
+
+// 网关响应体 (body填充)
+message RespBody {
+  uint32 cmd = 1;
+  bytes payload = 2; // 实际返回业务数据
+}
+
+// 服务推送体 (Game->Gate->Client)
+message PushBody {
+  uint32 cmd = 1;
+  bytes payload = 2; // 业务数据
+}
+
