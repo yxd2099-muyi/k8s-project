@@ -1,0 +1,11 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/api/pb/push;pb_push";
+package push;
+
+enum CmdPushKind {
+    Cmd_UNKNOW = 0;
+    Cmd_Chat = 1; // 聊天
+}
+message PushChat{
+  string content = 1;
+}

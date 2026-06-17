@@ -6,7 +6,6 @@ import (
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/internal/game/grpc_server"
-	"github.com/k8s/muyi/internal/game/internal/router"
 	"github.com/k8s/muyi/internal/game/k8s"
 	"github.com/k8s/muyi/internal/game/push"
 	"github.com/k8s/muyi/internal/game/room"
@@ -41,11 +40,10 @@ func NewGameService() (*GameService, error) {
 		cfg:       gameCfg,
 		roomMgr:   room.NewRoomMgr(gameCfg.MaxRoomNum),
 		rangeCalc: rangeCalc,
-		pushMgr:   push.NewPushManager(),
+		pushMgr:   push.InitGlobalPushMgr(),
 		ctx:       ctx,
 		cancel:    cancel,
 	}
-	router.InitRouter()
 	return svc, nil
 }
 
@@ -56,7 +54,7 @@ func (s *GameService) Start() error {
 			// 可以添加其他拦截器
 		),
 	)
-	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc, s.pushMgr)
+	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc)
 	pb_service.RegisterGameLogicServer(s.grpcSrv, logicSrv)
 
 	s.wg.Add(1)

@@ -154,8 +154,8 @@ func (c *WsClient) SendRequest(
 func (c *WsClient) SendCreateRoom(roomId uint64, bizArgs []byte) (*pb_base.WsFrame, error) {
 	return c.SendRequest(
 		pb_base.FirstKind_FIRST_ROOM,
-		pb_room.CmdRoomKind_Cmd_ROOM_UNKNOW,
-		//pb_room.CmdRoomKind_CMD_ROOM_CREATE,
+		//pb_room.CmdRoomKind_Cmd_ROOM_UNKNOW,
+		pb_room.CmdRoomKind_CMD_ROOM_CREATE,
 		roomId,
 		bizArgs,
 	)
@@ -208,7 +208,7 @@ func (c *WsClient) handleFrame(data []byte) {
 		fmt.Printf("[HandleFrame] unmarshal WsFrame err: %v\n", err)
 		return
 	}
-
+	fmt.Println("[HandleFrame] handleFrame ", frame.FrameType)
 	switch frame.FrameType {
 	case pb_base.FrameType_FRAME_RESPONSE:
 		// 请求响应，匹配seq唤醒等待chan

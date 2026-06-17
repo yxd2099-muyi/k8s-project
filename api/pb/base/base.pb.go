@@ -81,6 +81,7 @@ const (
 	FirstKind_FIRST_UNKNOW FirstKind = 0
 	FirstKind_FIRST_ROOM   FirstKind = 1 //路由到room 服务
 	FirstKind_FIRST_GUILD  FirstKind = 2 //路由到guild 公会服务
+	FirstKind_FIRST_PUSH   FirstKind = 3 //推送
 )
 
 // Enum value maps for FirstKind.
@@ -89,11 +90,13 @@ var (
 		0: "FIRST_UNKNOW",
 		1: "FIRST_ROOM",
 		2: "FIRST_GUILD",
+		3: "FIRST_PUSH",
 	}
 	FirstKind_value = map[string]int32{
 		"FIRST_UNKNOW": 0,
 		"FIRST_ROOM":   1,
 		"FIRST_GUILD":  2,
+		"FIRST_PUSH":   3,
 	}
 )
 
@@ -486,12 +489,14 @@ const file_base_base_proto_rawDesc = "" +
 	"\rFRAME_REQUEST\x10\x01\x12\x12\n" +
 	"\x0eFRAME_RESPONSE\x10\x02\x12\x0e\n" +
 	"\n" +
-	"FRAME_PUSH\x10\x03*>\n" +
+	"FRAME_PUSH\x10\x03*N\n" +
 	"\tFirstKind\x12\x10\n" +
 	"\fFIRST_UNKNOW\x10\x00\x12\x0e\n" +
 	"\n" +
 	"FIRST_ROOM\x10\x01\x12\x0f\n" +
-	"\vFIRST_GUILD\x10\x02*#\n" +
+	"\vFIRST_GUILD\x10\x02\x12\x0e\n" +
+	"\n" +
+	"FIRST_PUSH\x10\x03*#\n" +
 	"\aErrCode\x12\t\n" +
 	"\x05EC_OK\x10\x00\x12\r\n" +
 	"\bEC_ERROR\x10\x91NB)Z'github.com/k8s/muyi/api/pb/base;pb_baseb\x06proto3"

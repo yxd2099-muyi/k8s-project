@@ -7,8 +7,8 @@ import (
 	pb_room "github.com/k8s/muyi/api/pb/room"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/game/common"
+	"github.com/k8s/muyi/internal/game/internal/router"
 	"github.com/k8s/muyi/internal/game/k8s"
-	"github.com/k8s/muyi/internal/game/push"
 	"github.com/k8s/muyi/internal/game/room"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
@@ -19,17 +19,18 @@ type GameLogicServer struct {
 	pb_service.UnimplementedGameLogicServer
 	roomMgr   *room.RoomMgr
 	rangeCalc *k8s.RoomRangeCalc
-	pushMgr   *push.PushManager
-	clog      *zap.Logger
+	//pushMgr   *push.PushManager
+	clog *zap.Logger
 }
 
-func NewGameLogicServer(rm *room.RoomMgr, rc *k8s.RoomRangeCalc, pm *push.PushManager) *GameLogicServer {
-	return &GameLogicServer{
+func NewGameLogicServer(rm *room.RoomMgr, rc *k8s.RoomRangeCalc) *GameLogicServer {
+	router.InitRouter()
+	s := &GameLogicServer{
 		roomMgr:   rm,
 		rangeCalc: rc,
-		pushMgr:   pm,
 		clog:      logger.L,
 	}
+	return s
 }
 
 // ForwardClientMsg 接收gate转发的客户端请求
@@ -39,7 +40,7 @@ func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.
 			stack := string(debug.Stack())
 			s.clog.Error("任务处理panic makeProcessTaskSafe",
 				zap.Any("err", err),
-				zap.Any("stack", stack), // 关键
+				zap.String("stack", stack), // 关键
 			)
 		}
 	}()

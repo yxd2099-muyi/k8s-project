@@ -14,6 +14,7 @@ enum FirstKind{
   FIRST_UNKNOW = 0;
   FIRST_ROOM = 1; //路由到room 服务
   FIRST_GUILD = 2;//路由到guild 公会服务
+  FIRST_PUSH = 3;//推送
 }
 //// 业务小类接口
 //enum CmdKind{
