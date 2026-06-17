@@ -124,85 +124,30 @@ func (FirstKind) EnumDescriptor() ([]byte, []int) {
 	return file_base_base_proto_rawDescGZIP(), []int{1}
 }
 
-// 业务小类接口
-type CmdKind int32
-
-const (
-	CmdKind_Cmd_UNKNOW      CmdKind = 0
-	CmdKind_CMD_CREATE_ROOM CmdKind = 1 // 创建房间
-)
-
-// Enum value maps for CmdKind.
-var (
-	CmdKind_name = map[int32]string{
-		0: "Cmd_UNKNOW",
-		1: "CMD_CREATE_ROOM",
-	}
-	CmdKind_value = map[string]int32{
-		"Cmd_UNKNOW":      0,
-		"CMD_CREATE_ROOM": 1,
-	}
-)
-
-func (x CmdKind) Enum() *CmdKind {
-	p := new(CmdKind)
-	*p = x
-	return p
-}
-
-func (x CmdKind) String() string {
-	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
-}
-
-func (CmdKind) Descriptor() protoreflect.EnumDescriptor {
-	return file_base_base_proto_enumTypes[2].Descriptor()
-}
-
-func (CmdKind) Type() protoreflect.EnumType {
-	return &file_base_base_proto_enumTypes[2]
-}
-
-func (x CmdKind) Number() protoreflect.EnumNumber {
-	return protoreflect.EnumNumber(x)
-}
-
-// Deprecated: Use CmdKind.Descriptor instead.
-func (CmdKind) EnumDescriptor() ([]byte, []int) {
-	return file_base_base_proto_rawDescGZIP(), []int{2}
-}
-
+// // 业务小类接口
+//
+//	enum CmdKind{
+//	 Cmd_UNKNOW = 0;
+//	 CMD_CREATE_ROOM = 1;// 创建房间
+//	}
+//
 // 全局错误码
 type ErrCode int32
 
 const (
-	ErrCode_EC_OK                  ErrCode = 0
-	ErrCode_EC_INTERNAL_ERR        ErrCode = 10001
-	ErrCode_EC_PARAM_INVALID       ErrCode = 10002
-	ErrCode_EC_USER_NOT_LOGIN      ErrCode = 10003
-	ErrCode_EC_ROOM_NOT_EXIST      ErrCode = 10004
-	ErrCode_EC_ROOM_FULL           ErrCode = 10005
-	ErrCode_EC_GAME_SERVER_UNAVAIL ErrCode = 10006
+	ErrCode_EC_OK    ErrCode = 0
+	ErrCode_EC_ERROR ErrCode = 10001
 )
 
 // Enum value maps for ErrCode.
 var (
 	ErrCode_name = map[int32]string{
 		0:     "EC_OK",
-		10001: "EC_INTERNAL_ERR",
-		10002: "EC_PARAM_INVALID",
-		10003: "EC_USER_NOT_LOGIN",
-		10004: "EC_ROOM_NOT_EXIST",
-		10005: "EC_ROOM_FULL",
-		10006: "EC_GAME_SERVER_UNAVAIL",
+		10001: "EC_ERROR",
 	}
 	ErrCode_value = map[string]int32{
-		"EC_OK":                  0,
-		"EC_INTERNAL_ERR":        10001,
-		"EC_PARAM_INVALID":       10002,
-		"EC_USER_NOT_LOGIN":      10003,
-		"EC_ROOM_NOT_EXIST":      10004,
-		"EC_ROOM_FULL":           10005,
-		"EC_GAME_SERVER_UNAVAIL": 10006,
+		"EC_OK":    0,
+		"EC_ERROR": 10001,
 	}
 )
 
@@ -217,11 +162,11 @@ func (x ErrCode) String() string {
 }
 
 func (ErrCode) Descriptor() protoreflect.EnumDescriptor {
-	return file_base_base_proto_enumTypes[3].Descriptor()
+	return file_base_base_proto_enumTypes[2].Descriptor()
 }
 
 func (ErrCode) Type() protoreflect.EnumType {
-	return &file_base_base_proto_enumTypes[3]
+	return &file_base_base_proto_enumTypes[2]
 }
 
 func (x ErrCode) Number() protoreflect.EnumNumber {
@@ -230,19 +175,19 @@ func (x ErrCode) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ErrCode.Descriptor instead.
 func (ErrCode) EnumDescriptor() ([]byte, []int) {
-	return file_base_base_proto_rawDescGZIP(), []int{3}
+	return file_base_base_proto_rawDescGZIP(), []int{2}
 }
 
 // 顶层统一包裹帧
 type WsFrame struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	FrameType     FrameType              `protobuf:"varint,1,opt,name=frame_type,json=frameType,proto3,enum=base.FrameType" json:"frame_type,omitempty"` //
-	FirstKind     FirstKind              `protobuf:"varint,2,opt,name=first_kind,json=firstKind,proto3,enum=base.FirstKind" json:"first_kind,omitempty"` //
+	FrameType     FrameType              `protobuf:"varint,1,opt,name=frame_type,json=frameType,proto3,enum=base.FrameType" json:"frame_type,omitempty"` // 消息大类
+	FirstKind     FirstKind              `protobuf:"varint,2,opt,name=first_kind,json=firstKind,proto3,enum=base.FirstKind" json:"first_kind,omitempty"` // 业务大类
 	Seq           uint64                 `protobuf:"varint,3,opt,name=seq,proto3" json:"seq,omitempty"`                                                  // 请求序列号，响应原样带回，客户端异步匹配
 	Uid           uint64                 `protobuf:"varint,4,opt,name=uid,proto3" json:"uid,omitempty"`                                                  // 用户ID
 	ErrCode       ErrCode                `protobuf:"varint,5,opt,name=err_code,json=errCode,proto3,enum=base.ErrCode" json:"err_code,omitempty"`         // 错误码
 	ErrMsg        string                 `protobuf:"bytes,6,opt,name=err_msg,json=errMsg,proto3" json:"err_msg,omitempty"`                               // 错误详情
-	Payload       []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`                                           // 业务子消息序列化数据
+	Payload       []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`                                           // 业务子消息序列化数据 对应请求时候 ReqBody, 返回时候RespBody
 	Timestamp     int64                  `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                                      // 客户端原样ts
 	RoomId        uint64                 `protobuf:"varint,9,opt,name=roomId,proto3" json:"roomId,omitempty"`                                            //房间号
 	unknownFields protoimpl.UnknownFields
@@ -414,9 +359,7 @@ func (x *ReqBody) GetPayload() []byte {
 // 网关响应体 (body填充)
 type RespBody struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Cmd           uint32                 `protobuf:"varint,1,opt,name=cmd,proto3" json:"cmd,omitempty"`
-	RoomId        uint64                 `protobuf:"varint,2,opt,name=roomId,proto3" json:"roomId,omitempty"`  // 房间号
-	Payload       []byte                 `protobuf:"bytes,3,opt,name=payload,proto3" json:"payload,omitempty"` // 实际返回业务数据
+	Payload       []byte                 `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"` // 实际返回业务数据
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -449,20 +392,6 @@ func (x *RespBody) ProtoReflect() protoreflect.Message {
 // Deprecated: Use RespBody.ProtoReflect.Descriptor instead.
 func (*RespBody) Descriptor() ([]byte, []int) {
 	return file_base_base_proto_rawDescGZIP(), []int{2}
-}
-
-func (x *RespBody) GetCmd() uint32 {
-	if x != nil {
-		return x.Cmd
-	}
-	return 0
-}
-
-func (x *RespBody) GetRoomId() uint64 {
-	if x != nil {
-		return x.RoomId
-	}
-	return 0
 }
 
 func (x *RespBody) GetPayload() []byte {
@@ -546,11 +475,9 @@ const file_base_base_proto_rawDesc = "" +
 	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x10\n" +
 	"\x03uid\x18\x02 \x01(\x04R\x03uid\x12\x16\n" +
 	"\x06roomId\x18\x03 \x01(\x04R\x06roomId\x12\x18\n" +
-	"\apayload\x18\x04 \x01(\fR\apayload\"N\n" +
-	"\bRespBody\x12\x10\n" +
-	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x16\n" +
-	"\x06roomId\x18\x02 \x01(\x04R\x06roomId\x12\x18\n" +
-	"\apayload\x18\x03 \x01(\fR\apayload\"6\n" +
+	"\apayload\x18\x04 \x01(\fR\apayload\"$\n" +
+	"\bRespBody\x12\x18\n" +
+	"\apayload\x18\x01 \x01(\fR\apayload\"6\n" +
 	"\bPushBody\x12\x10\n" +
 	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x18\n" +
 	"\apayload\x18\x02 \x01(\fR\apayload*U\n" +
@@ -564,19 +491,10 @@ const file_base_base_proto_rawDesc = "" +
 	"\fFIRST_UNKNOW\x10\x00\x12\x0e\n" +
 	"\n" +
 	"FIRST_ROOM\x10\x01\x12\x0f\n" +
-	"\vFIRST_GUILD\x10\x02*.\n" +
-	"\aCmdKind\x12\x0e\n" +
-	"\n" +
-	"Cmd_UNKNOW\x10\x00\x12\x13\n" +
-	"\x0fCMD_CREATE_ROOM\x10\x01*\xa1\x01\n" +
+	"\vFIRST_GUILD\x10\x02*#\n" +
 	"\aErrCode\x12\t\n" +
-	"\x05EC_OK\x10\x00\x12\x14\n" +
-	"\x0fEC_INTERNAL_ERR\x10\x91N\x12\x15\n" +
-	"\x10EC_PARAM_INVALID\x10\x92N\x12\x16\n" +
-	"\x11EC_USER_NOT_LOGIN\x10\x93N\x12\x16\n" +
-	"\x11EC_ROOM_NOT_EXIST\x10\x94N\x12\x11\n" +
-	"\fEC_ROOM_FULL\x10\x95N\x12\x1b\n" +
-	"\x16EC_GAME_SERVER_UNAVAIL\x10\x96NB)Z'github.com/k8s/muyi/api/pb/base;pb_baseb\x06proto3"
+	"\x05EC_OK\x10\x00\x12\r\n" +
+	"\bEC_ERROR\x10\x91NB)Z'github.com/k8s/muyi/api/pb/base;pb_baseb\x06proto3"
 
 var (
 	file_base_base_proto_rawDescOnce sync.Once
@@ -590,22 +508,21 @@ func file_base_base_proto_rawDescGZIP() []byte {
 	return file_base_base_proto_rawDescData
 }
 
-var file_base_base_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
+var file_base_base_proto_enumTypes = make([]protoimpl.EnumInfo, 3)
 var file_base_base_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_base_base_proto_goTypes = []any{
 	(FrameType)(0),   // 0: base.FrameType
 	(FirstKind)(0),   // 1: base.FirstKind
-	(CmdKind)(0),     // 2: base.CmdKind
-	(ErrCode)(0),     // 3: base.ErrCode
-	(*WsFrame)(nil),  // 4: base.WsFrame
-	(*ReqBody)(nil),  // 5: base.ReqBody
-	(*RespBody)(nil), // 6: base.RespBody
-	(*PushBody)(nil), // 7: base.PushBody
+	(ErrCode)(0),     // 2: base.ErrCode
+	(*WsFrame)(nil),  // 3: base.WsFrame
+	(*ReqBody)(nil),  // 4: base.ReqBody
+	(*RespBody)(nil), // 5: base.RespBody
+	(*PushBody)(nil), // 6: base.PushBody
 }
 var file_base_base_proto_depIdxs = []int32{
 	0, // 0: base.WsFrame.frame_type:type_name -> base.FrameType
 	1, // 1: base.WsFrame.first_kind:type_name -> base.FirstKind
-	3, // 2: base.WsFrame.err_code:type_name -> base.ErrCode
+	2, // 2: base.WsFrame.err_code:type_name -> base.ErrCode
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -623,7 +540,7 @@ func file_base_base_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_base_base_proto_rawDesc), len(file_base_base_proto_rawDesc)),
-			NumEnums:      4,
+			NumEnums:      3,
 			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,

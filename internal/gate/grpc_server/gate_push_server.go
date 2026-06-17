@@ -21,7 +21,7 @@ func NewGatePushServer(h *hub.Hub) *GatePushServer {
 func (s *GatePushServer) Push(ctx context.Context, req *pb_service.PushReq) (*pb_service.PushResp, error) {
 	data, err := serializer.EncodeProto(req.Body)
 	if err != nil {
-		return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_INTERNAL_ERR)}, nil
+		return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_ERROR)}, nil
 	}
 	// 批量推送
 	s.hub.BatchPush(req.Uids, data)

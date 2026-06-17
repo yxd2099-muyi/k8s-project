@@ -15,20 +15,16 @@ enum FirstKind{
   FIRST_ROOM = 1; //路由到room 服务
   FIRST_GUILD = 2;//路由到guild 公会服务
 }
-// 业务小类接口
-enum CmdKind{
-  Cmd_UNKNOW = 0;
-  CMD_CREATE_ROOM = 1;// 创建房间
-}
+//// 业务小类接口
+//enum CmdKind{
+//  Cmd_UNKNOW = 0;
+//  CMD_CREATE_ROOM = 1;// 创建房间
+//}
 // 全局错误码
 enum ErrCode {
   EC_OK = 0;
-  EC_INTERNAL_ERR = 10001;
-  EC_PARAM_INVALID = 10002;
-  EC_USER_NOT_LOGIN = 10003;
-  EC_ROOM_NOT_EXIST = 10004;
-  EC_ROOM_FULL = 10005;
-  EC_GAME_SERVER_UNAVAIL = 10006;
+  EC_ERROR = 10001;
+
 }
 // 顶层统一包裹帧
 message WsFrame {

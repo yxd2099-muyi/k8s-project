@@ -26,7 +26,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Gate 提供给 Game 的推送服务（题目指定一元RPC Push）
+// Gate 提供给 Game 的推送服务
 type GatePushClient interface {
 	Push(ctx context.Context, in *PushReq, opts ...grpc.CallOption) (*PushResp, error)
 }
@@ -53,7 +53,7 @@ func (c *gatePushClient) Push(ctx context.Context, in *PushReq, opts ...grpc.Cal
 // All implementations must embed UnimplementedGatePushServer
 // for forward compatibility.
 //
-// Gate 提供给 Game 的推送服务（题目指定一元RPC Push）
+// Gate 提供给 Game 的推送服务
 type GatePushServer interface {
 	Push(context.Context, *PushReq) (*PushResp, error)
 	mustEmbedUnimplementedGatePushServer()

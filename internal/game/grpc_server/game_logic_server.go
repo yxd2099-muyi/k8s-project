@@ -2,14 +2,17 @@ package grpc_server
 
 import (
 	"context"
+	"fmt"
 	pb_base "github.com/k8s/muyi/api/pb/base"
+	pb_room "github.com/k8s/muyi/api/pb/room"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/internal/game/k8s"
 	"github.com/k8s/muyi/internal/game/push"
 	"github.com/k8s/muyi/internal/game/room"
-	//"github.com/k8s/muyi/internal/game/room"
-	//"github.com/k8s/muyi/internal/game/k8s"
-	//"github.com/k8s/muyi/internal/game/push"
+	"github.com/k8s/muyi/shared/infra/logger"
+	"go.uber.org/zap"
+	"runtime/debug"
 )
 
 type GameLogicServer struct {
@@ -17,6 +20,7 @@ type GameLogicServer struct {
 	roomMgr   *room.RoomMgr
 	rangeCalc *k8s.RoomRangeCalc
 	pushMgr   *push.PushManager
+	clog      *zap.Logger
 }
 
 func NewGameLogicServer(rm *room.RoomMgr, rc *k8s.RoomRangeCalc, pm *push.PushManager) *GameLogicServer {
@@ -24,39 +28,75 @@ func NewGameLogicServer(rm *room.RoomMgr, rc *k8s.RoomRangeCalc, pm *push.PushMa
 		roomMgr:   rm,
 		rangeCalc: rc,
 		pushMgr:   pm,
+		clog:      logger.L,
 	}
 }
 
 // ForwardClientMsg 接收gate转发的客户端请求
 func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.ForwardReq) (*pb_service.ForwardRsp, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			stack := string(debug.Stack())
+			s.clog.Error("任务处理panic makeProcessTaskSafe",
+				zap.Any("err", err),
+				zap.Any("stack", stack), // 关键
+			)
+		}
+	}()
 	body := req.Req
 	roomId := body.RoomId
 	//uid := body.Uid
-
+	cmd := pb_room.CmdRoomKind(body.Cmd)
+	payload := body.Payload
 	// 校验房间归属
 	if !s.rangeCalc.IsRoomBelong(roomId) {
 		return &pb_service.ForwardRsp{
-			Code: pb_base.ErrCode_EC_ROOM_NOT_EXIST,
+			Code: pb_base.ErrCode_EC_ERROR,
 			Msg:  "room not belong this pod",
 		}, nil
 	}
-
-	// 业务cmd分发
-	switch body.Cmd {
-	case uint32(pb_base.CmdKind_CMD_CREATE_ROOM):
-		code := s.roomMgr.CreateRoom(roomId)
-		return &pb_service.ForwardRsp{
-			Code: code,
-			Msg:  "success hello yang",
-			Body: &pb_base.RespBody{
-				Cmd:    body.Cmd,
-				RoomId: roomId,
-			},
-		}, nil
-	default:
-		return &pb_service.ForwardRsp{
-			Code: pb_base.ErrCode_EC_PARAM_INVALID,
-			Msg:  "unknown cmd",
-		}, nil
+	res := &pb_service.ForwardRsp{}
+	res.Code = pb_base.ErrCode_EC_OK
+	h, exist := common.GetRoomHandler(cmd)
+	s.clog.Debug("ForwardClientMsg ", zap.Any("cmd", cmd))
+	if !exist {
+		res.Code = pb_base.ErrCode_EC_ERROR
+		res.Msg = "cmd not exist"
+		return res, nil
 	}
+	tCtx, ok := ctx.Value(common.TContextKey{}).(*common.TContext)
+	clog := tCtx.Logger
+	if !ok {
+		text := fmt.Sprintf("handle context not exist")
+		res.Msg = text
+		clog.Error(text)
+		return res, nil
+	}
+	tCtx.Logger = clog.With(zap.Any("cmd", cmd))
+	b, err := h.Handler(tCtx, payload)
+	if err != nil {
+		res.Code = pb_base.ErrCode_EC_ERROR
+		res.Msg = err.Error()
+		return res, nil
+	}
+	resB := &pb_base.RespBody{}
+	resB.Payload = b
+	res.Body = resB
+	res.Msg = "success ok ok"
+	return res, nil
+	// 业务cmd分发
+	//switch body.Cmd {
+	//case uint32(pb_room.CmdRoomKind_CMD_ROOM_CREATE):
+	//	code := s.roomMgr.CreateRoom(roomId)
+	//	return &pb_service.ForwardRsp{
+	//		Code: code,
+	//		Msg:  "success hello yang",
+	//		Body: &pb_base.RespBody{},
+	//	}, nil
+	//default:
+	//	return &pb_service.ForwardRsp{
+	//		Code: pb_base.ErrCode_EC_PARAM_INVALID,
+	//		Msg:  "unknown cmd",
+	//	}, nil
+	//}
 }

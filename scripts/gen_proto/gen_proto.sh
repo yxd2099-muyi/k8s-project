@@ -16,7 +16,7 @@ cd "$PROTO_ROOT" || exit
     --proto_path=. \
     --go_out="$PB_OUT" --go_opt=paths=source_relative \
     --go-grpc_out="$PB_OUT" --go-grpc_opt=paths=source_relative \
-    base/*.proto service/*.proto web/*.proto push/*.proto
+    base/*.proto service/*.proto web/*.proto push/*.proto room/*.proto
 
 echo "生成完成，输出目录：$PB_OUT"
 ##!/bin/bash

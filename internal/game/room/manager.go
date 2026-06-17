@@ -29,22 +29,22 @@ func NewRoomMgr(maxRoom int) *RoomMgr {
 
 // CreateRoom 创建房间
 func (m *RoomMgr) CreateRoom(roomId uint64) pb_base.ErrCode {
-	if m.shutdown.Load() {
-		return pb_base.ErrCode_EC_INTERNAL_ERR
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if int(m.count.Load()) >= m.maxNum {
-		return pb_base.ErrCode_EC_ROOM_FULL
-	}
-	if _, ok := m.rooms[roomId]; ok {
-		return pb_base.ErrCode_EC_OK
-	}
-	m.rooms[roomId] = &Room{
-		roomId: roomId,
-		uids:   make(map[uint64]bool),
-	}
-	m.count.Add(1)
+	//if m.shutdown.Load() {
+	//	return pb_base.ErrCode_EC_ERROR
+	//}
+	//m.mu.Lock()
+	//defer m.mu.Unlock()
+	//if int(m.count.Load()) >= m.maxNum {
+	//	return pb_base.ErrCode_EC_ROOM_FULL
+	//}
+	//if _, ok := m.rooms[roomId]; ok {
+	//	return pb_base.ErrCode_EC_OK
+	//}
+	//m.rooms[roomId] = &Room{
+	//	roomId: roomId,
+	//	uids:   make(map[uint64]bool),
+	//}
+	//m.count.Add(1)
 	return pb_base.ErrCode_EC_OK
 }
 

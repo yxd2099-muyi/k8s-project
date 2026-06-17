@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gorilla/websocket"
+	pb_room "github.com/k8s/muyi/api/pb/room"
 	"google.golang.org/protobuf/proto"
 	"net/url"
 	"sync"
@@ -85,7 +86,7 @@ func NewWsClient(uid uint64) (*WsClient, error) {
 // 返回顶层WsFrame响应
 func (c *WsClient) SendRequest(
 	firstKind pb_base.FirstKind,
-	cmd pb_base.CmdKind,
+	cmd pb_room.CmdRoomKind,
 	roomId uint64,
 	bizPayload []byte,
 ) (*pb_base.WsFrame, error) {
@@ -153,7 +154,8 @@ func (c *WsClient) SendRequest(
 func (c *WsClient) SendCreateRoom(roomId uint64, bizArgs []byte) (*pb_base.WsFrame, error) {
 	return c.SendRequest(
 		pb_base.FirstKind_FIRST_ROOM,
-		pb_base.CmdKind_CMD_CREATE_ROOM,
+		pb_room.CmdRoomKind_Cmd_ROOM_UNKNOW,
+		//pb_room.CmdRoomKind_CMD_ROOM_CREATE,
 		roomId,
 		bizArgs,
 	)

@@ -6,17 +6,21 @@ import (
 	"github.com/gorilla/websocket"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
-	"github.com/k8s/muyi/internal/gate/common/frame"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/redisClient"
+	"github.com/k8s/muyi/shared/kit"
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
+	"google.golang.org/grpc/metadata"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
 	"sync"
+	"time"
+
 	//"github.com/k8s/muyi/internal/common"
 	//"github.com/k8s/muyi/internal/common/frame"
 	//"github.com/k8s/muyi/internal/common/rediscli"
@@ -139,6 +143,11 @@ func (s *GateService) SetUserOnline(uid uint64, gateAddr string, expireTime int)
 
 // handleWsFrame 处理客户端上行WsFrame，转发GameServer
 func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
+	defer func() {
+		if r := recover(); r != nil {
+			s.clog.Error("handleWsFrame panic", zap.Any("r", r))
+		}
+	}()
 	// 只处理客户端请求
 	if frame.FrameType != pb_base.FrameType_FRAME_REQUEST {
 		return
@@ -148,14 +157,14 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	// 模拟：根据roomId获取对应gameserver地址（业务自行实现room -> game pod路由）
 	gameAddr := s.getGameAddrByRoom(roomId)
 	if gameAddr == "" {
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_GAME_SERVER_UNAVAIL, "game server not found")
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "game server not found")
 		return
 	}
 	// 获取game grpc client
 	gameCli, err := s.gamePool.GetClient(gameAddr)
 	s.clog.Debug("get game client", zap.String("gameAddr", gameAddr), zap.Error(err))
 	if err != nil {
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_INTERNAL_ERR, "connect game fail")
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game fail")
 		return
 	}
 	reqBody := frame.GetPayload()
@@ -163,17 +172,25 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	err = serializer.DecodeProto(reqBody, reqBodyPro)
 	if err != nil {
 		s.clog.Error("decode req body fail", zap.Error(err))
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_INTERNAL_ERR, "decode req body fail")
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "decode req body fail")
 		return
 	}
 	// 构造转发请求
 	forwardReq := &pb_service.ForwardReq{
 		Req: reqBodyPro,
 	}
+	// 传递上下文
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ctx = metadata.AppendToOutgoingContext(ctx,
+		cconst.GRpcContextFieldUID, kit.Uint64ToString(uid),
+	)
+	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid)
 	// grpc调用GameLogic转发
-	rsp, err := gameCli.ForwardClientMsg(context.Background(), forwardReq)
+	rsp, err := gameCli.ForwardClientMsg(ctx, forwardReq)
+	s.clog.Debug("forward client msg", zap.Any("rsp", rsp), zap.Error(err))
 	if err != nil {
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_INTERNAL_ERR, err.Error())
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, err.Error())
 		return
 	}
 	// 封装响应WsFrame回写给客户端
@@ -184,22 +201,19 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 		Uid:       uid,
 		ErrCode:   rsp.Code,
 		ErrMsg:    rsp.Msg,
-		Payload:   rsp.Body.Payload,
+		Payload:   rsp.GetBody().GetPayload(),
 		Timestamp: frame.Timestamp,
 		RoomId:    roomId,
 	}
-	data, _ := serializer.EncodeProto(respFrame)
+	data, err := serializer.EncodeProto(respFrame)
+	if err != nil {
+		s.clog.Error("encode resp frame fail", zap.Error(err))
+	}
+	s.clog.Debug("encode resp frame data", zap.Any("frame", respFrame))
 	cli, ok := s.hub.GetConn(uid)
 	if ok {
 		_ = cli.WriteMsg(data)
 	}
-}
-
-// getGameAddrByRoom 根据roomId路由game pod（k8s statefulset分片逻辑）
-func (s *GateService) getGameAddrByRoom(roomId uint64) string {
-	// 示例格式 game-0.game-service.default.svc.cluster.local:50051
-	//return "game-0.game-service.default.svc.cluster.local:50051"
-	return "172.16.111.60:9000"
 }
 
 // sendErrResp 下发错误响应
@@ -212,11 +226,28 @@ func (s *GateService) sendErrResp(origin *pb_base.WsFrame, uid uint64, code pb_b
 		ErrMsg:    msg,
 		RoomId:    origin.RoomId,
 	}
-	data, _ := frame.EncodeWsFrame(respFrame)
-	cli, ok := s.hub.GetConn(uid)
-	if ok {
-		_ = cli.WriteMsg(data)
+	data, err := serializer.EncodeProto(respFrame)
+	s.clog.Debug("send err resp", zap.Any("frame", respFrame), zap.Error(err))
+	if err != nil {
+		s.clog.Error("encode resp fail", zap.Error(err))
+		return
 	}
+	s.clog.Debug("send err resp", zap.Any("frame", respFrame), zap.Error(err))
+	cli, ok := s.hub.GetConn(uid)
+	s.clog.Debug("sendErrResp", zap.Any("respFrame", respFrame), zap.Any("ok", ok), zap.Error(err))
+	if ok {
+		err = cli.WriteMsg(data)
+		if err != nil {
+			s.clog.Error("write resp fail", zap.Error(err))
+		}
+	}
+}
+
+// getGameAddrByRoom 根据roomId路由game pod（k8s statefulset分片逻辑）
+func (s *GateService) getGameAddrByRoom(roomId uint64) string {
+	// 示例格式 game-0.game-service.default.svc.cluster.local:50051
+	//return "game-0.game-service.default.svc.cluster.local:50051"
+	return "172.16.111.60:9000"
 }
 
 // Shutdown 优雅关闭gate所有资源

@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/internal/game/grpc_server"
+	"github.com/k8s/muyi/internal/game/internal/router"
 	"github.com/k8s/muyi/internal/game/k8s"
 	"github.com/k8s/muyi/internal/game/push"
 	"github.com/k8s/muyi/internal/game/room"
@@ -43,11 +45,17 @@ func NewGameService() (*GameService, error) {
 		ctx:       ctx,
 		cancel:    cancel,
 	}
+	router.InitRouter()
 	return svc, nil
 }
 
 func (s *GameService) Start() error {
-	s.grpcSrv = grpc.NewServer()
+	s.grpcSrv = grpc.NewServer(
+		grpc.ChainUnaryInterceptor(
+			common.ContextInterception(),
+			// 可以添加其他拦截器
+		),
+	)
 	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc, s.pushMgr)
 	pb_service.RegisterGameLogicServer(s.grpcSrv, logicSrv)
 

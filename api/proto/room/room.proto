@@ -1,0 +1,15 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/api/pb/room;pb_room";
+package base;
+// 业务小类接口
+enum CmdRoomKind{
+  Cmd_ROOM_UNKNOW = 0;
+  CMD_ROOM_CREATE = 1;// 创建房间
+}
+
+message RoomCreateReq{
+  uint64 roomId = 1;
+}
+message RoomCreateResp{
+  uint64 roomId = 1;
+}
