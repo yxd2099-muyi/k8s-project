@@ -73,6 +73,7 @@ func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.
 		return res, nil
 	}
 	tCtx.Logger = clog.With(zap.Any("cmd", cmd))
+	// 业务处理
 	b, err := h.Handler(tCtx, payload)
 	if err != nil {
 		res.Code = pb_base.ErrCode_EC_ERROR
@@ -82,21 +83,6 @@ func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.
 	resB := &pb_base.RespBody{}
 	resB.Payload = b
 	res.Body = resB
-	res.Msg = "success ok ok"
+	res.Msg = "success"
 	return res, nil
-	// 业务cmd分发
-	//switch body.Cmd {
-	//case uint32(pb_room.CmdRoomKind_CMD_ROOM_CREATE):
-	//	code := s.roomMgr.CreateRoom(roomId)
-	//	return &pb_service.ForwardRsp{
-	//		Code: code,
-	//		Msg:  "success hello yang",
-	//		Body: &pb_base.RespBody{},
-	//	}, nil
-	//default:
-	//	return &pb_service.ForwardRsp{
-	//		Code: pb_base.ErrCode_EC_PARAM_INVALID,
-	//		Msg:  "unknown cmd",
-	//	}, nil
-	//}
 }

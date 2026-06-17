@@ -21,9 +21,6 @@ import (
 	"sync"
 	"time"
 
-	//"github.com/k8s/muyi/internal/common"
-	//"github.com/k8s/muyi/internal/common/frame"
-	//"github.com/k8s/muyi/internal/common/rediscli"
 	"github.com/k8s/muyi/internal/gate/client_conn"
 	"github.com/k8s/muyi/internal/gate/grpc_client"
 	"github.com/k8s/muyi/internal/gate/grpc_server"
@@ -132,7 +129,6 @@ func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 首次写入redis在线信息
-	//_ = s.redisCli.SetUserOnline(uid, s.gateAddr, s.cfg.RedisExpire)
 	_ = s.SetUserOnline(uid, s.gateAddr, s.cfg.RedisExpire)
 }
 
@@ -220,21 +216,18 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 func (s *GateService) sendErrResp(origin *pb_base.WsFrame, uid uint64, code pb_base.ErrCode, msg string) {
 	respFrame := &pb_base.WsFrame{
 		FrameType: pb_base.FrameType_FRAME_RESPONSE,
-		Seq:       origin.Seq,
+		Seq:       origin.GetSeq(),
 		Uid:       uid,
 		ErrCode:   code,
 		ErrMsg:    msg,
-		RoomId:    origin.RoomId,
+		RoomId:    origin.GetRoomId(),
 	}
 	data, err := serializer.EncodeProto(respFrame)
-	s.clog.Debug("send err resp", zap.Any("frame", respFrame), zap.Error(err))
 	if err != nil {
 		s.clog.Error("encode resp fail", zap.Error(err))
 		return
 	}
-	s.clog.Debug("send err resp", zap.Any("frame", respFrame), zap.Error(err))
 	cli, ok := s.hub.GetConn(uid)
-	s.clog.Debug("sendErrResp", zap.Any("respFrame", respFrame), zap.Any("ok", ok), zap.Error(err))
 	if ok {
 		err = cli.WriteMsg(data)
 		if err != nil {
