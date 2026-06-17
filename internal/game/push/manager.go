@@ -127,7 +127,7 @@ func (p *PushManager) delGateClient(gateAddr string) {
 }
 
 // BatchPushUser 批量推送uid列表（带协程限流、超时ctx、故障清理）
-func (p *PushManager) BatchPushUser(uids []uint64, pushBody *pb_base.PushBody) {
+func (p *PushManager) BatchPushUser(clog *zap.Logger, uids []uint64, pushBody *pb_base.PushBody) {
 	if len(uids) == 0 || pushBody == nil {
 		return
 	}
@@ -137,7 +137,7 @@ func (p *PushManager) BatchPushUser(uids []uint64, pushBody *pb_base.PushBody) {
 	for _, uid := range uids {
 		gateAddr, err := p.getUserGateAddr(uid)
 		if err != nil || gateAddr == "" {
-			p.clog.Warn("get user gate addr empty, skip push", zap.Uint64("uid", uid), zap.Error(err))
+			clog.Warn("get user gate addr empty, skip push", zap.Uint64("uid", uid), zap.Error(err))
 			continue
 		}
 		gateGroup[gateAddr] = append(gateGroup[gateAddr], uid)
@@ -173,7 +173,7 @@ func (p *PushManager) BatchPushUser(uids []uint64, pushBody *pb_base.PushBody) {
 			}
 			_, err = cli.Push(ctx, req)
 			if err != nil {
-				p.clog.Error("gate push failed",
+				clog.Error("gate push failed",
 					zap.Any("gate_addr", addr),
 					zap.Any("uid_count", len(uids)),
 					zap.Error(err),
@@ -182,15 +182,15 @@ func (p *PushManager) BatchPushUser(uids []uint64, pushBody *pb_base.PushBody) {
 				p.delGateClient(addr)
 				return
 			}
-			p.clog.Debug("gate batch push success", zap.Any("gate_addr", addr), zap.Any("uid_num", len(uids)))
+			clog.Debug("gate batch push success", zap.Any("gate_addr", addr), zap.Any("uid_num", len(uids)))
 		}(gateAddr, targetUids)
 	}
 	wg.Wait()
 }
 
 // SinglePushUser 单用户推送封装（业务高频使用）
-func (p *PushManager) SinglePushUser(uid uint64, pushBody *pb_base.PushBody) {
-	p.BatchPushUser([]uint64{uid}, pushBody)
+func (p *PushManager) SinglePushUser(clog *zap.Logger, uid uint64, pushBody *pb_base.PushBody) {
+	p.BatchPushUser(clog, []uint64{uid}, pushBody)
 	return
 }
 
@@ -209,21 +209,21 @@ func (p *PushManager) Shutdown() {
 }
 
 // SinglePushUser 给单个人放消息
-func SinglePushUser(uid uint64, cmd pb_push.CmdPushKind, p proto.Message) {
+func SinglePushUser(clog *zap.Logger, uid uint64, cmd pb_push.CmdPushKind, p proto.Message) {
 	payload, _ := serializer.EncodeProto(p)
 	req := &pb_base.PushBody{}
 	req.Cmd = uint32(cmd)
 	req.Payload = payload
-	GlobalMgr.SinglePushUser(uid, req)
+	GlobalMgr.SinglePushUser(clog, uid, req)
 	return
 }
 
 // BatchPushUser 给多人发送
-func BatchPushUser(uids []uint64, cmd pb_push.CmdPushKind, p proto.Message) {
+func BatchPushUser(clog *zap.Logger, uids []uint64, cmd pb_push.CmdPushKind, p proto.Message) {
 	payload, _ := serializer.EncodeProto(p)
 	req := &pb_base.PushBody{}
 	req.Cmd = uint32(cmd)
 	req.Payload = payload
-	GlobalMgr.BatchPushUser(uids, req)
+	GlobalMgr.BatchPushUser(clog, uids, req)
 	return
 }

@@ -20,6 +20,6 @@ func (c *Handler) Create(ctx *common.TContext, req []byte) ([]byte, error) {
 	clog.Debug("Create demo")
 	uId := ctx.Uid
 	p := &pb_push.PushChat{Content: "hello world"}
-	push.SinglePushUser(uId, pb_push.CmdPushKind_Cmd_Chat, p)
+	push.SinglePushUser(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
 	return nil, nil
 }
