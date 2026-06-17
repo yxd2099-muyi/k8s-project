@@ -34,8 +34,9 @@ func main() {
 	}
 	defer rc.Close()
 	wsPort, gPort := getPort()
-	gateAddr := fmt.Sprintf(":%s", wsPort) // 这样写对吗？ todo
+	gateAddr := fmt.Sprintf(":%s", wsPort) //k8s
 	grpcAddr := fmt.Sprintf(":%s", gPort)
+	clog.Info("grpc addr", zap.String("gateAddr", gateAddr), zap.String("grpcAddr", grpcAddr))
 	gateSvc := gate.NewGateService(cfg.Gate, gateAddr, grpcAddr)
 	err = gateSvc.Start()
 	if err != nil {
@@ -54,10 +55,6 @@ func main() {
 		return
 	}
 	clog.Info("gateserver shutdown")
-	//ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	//defer cancel()
-	//shutdownCtx := WaitShutdown(10 * time.Second)
-	//<-shutdownCtx.Done()
 
 }
 

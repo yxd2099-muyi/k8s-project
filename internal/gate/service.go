@@ -8,10 +8,13 @@ import (
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/gate/common/frame"
 	"github.com/k8s/muyi/shared/infra/config"
+	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/redisClient"
 	"github.com/k8s/muyi/shared/kit/serializer"
+	"go.uber.org/zap"
 	"net"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	//"github.com/k8s/muyi/internal/common"
@@ -44,6 +47,7 @@ type GateService struct {
 	wg       sync.WaitGroup
 	ctx      context.Context
 	cancel   context.CancelFunc
+	clog     *zap.Logger
 }
 
 func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
@@ -57,6 +61,7 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 		grpcAddr: grpcAddr,
 		ctx:      ctx,
 		cancel:   cancel,
+		clog:     logger.L,
 	}
 	// 注册客户端帧回调
 	//client_conn.NewClientConn()
@@ -73,24 +78,32 @@ func (s *GateService) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		lis, err := net.Listen("tcp", fmt.Sprintf(":%s", s.grpcAddr))
+		lis, err := net.Listen("tcp", fmt.Sprintf("%s", s.grpcAddr))
 		if err != nil {
 			panic(err)
 		}
-		_ = s.grpcSrv.Serve(lis)
+		err = s.grpcSrv.Serve(lis)
+		if err != nil {
+			s.clog.Error("grpc server start error", zap.Error(err))
+			os.Exit(1)
+		}
 	}()
 
 	// 2. 启动websocket http服务
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.wsHandler)
 	httpSrv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", s.cfg.WsPort),
+		Addr:    fmt.Sprintf("%s", s.gateAddr),
 		Handler: mux,
 	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		_ = httpSrv.ListenAndServe()
+		err := httpSrv.ListenAndServe()
+		if err != nil {
+			s.clog.Error("http server start error", zap.Error(err))
+			os.Exit(1)
+		}
 	}()
 	s.httpSrv = httpSrv
 	return nil
@@ -140,17 +153,22 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	}
 	// 获取game grpc client
 	gameCli, err := s.gamePool.GetClient(gameAddr)
+	s.clog.Debug("get game client", zap.String("gameAddr", gameAddr), zap.Error(err))
 	if err != nil {
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_INTERNAL_ERR, "connect game fail")
 		return
 	}
+	reqBody := frame.GetPayload()
+	reqBodyPro := &pb_base.ReqBody{}
+	err = serializer.DecodeProto(reqBody, reqBodyPro)
+	if err != nil {
+		s.clog.Error("decode req body fail", zap.Error(err))
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_INTERNAL_ERR, "decode req body fail")
+		return
+	}
 	// 构造转发请求
 	forwardReq := &pb_service.ForwardReq{
-		Req: &pb_base.ReqBody{
-			Uid:     uid,
-			RoomId:  roomId,
-			Payload: frame.Payload,
-		},
+		Req: reqBodyPro,
 	}
 	// grpc调用GameLogic转发
 	rsp, err := gameCli.ForwardClientMsg(context.Background(), forwardReq)
@@ -170,7 +188,6 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 		Timestamp: frame.Timestamp,
 		RoomId:    roomId,
 	}
-	//data, _ := frame.EncodeWsFrame(respFrame)
 	data, _ := serializer.EncodeProto(respFrame)
 	cli, ok := s.hub.GetConn(uid)
 	if ok {
@@ -181,7 +198,8 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 // getGameAddrByRoom 根据roomId路由game pod（k8s statefulset分片逻辑）
 func (s *GateService) getGameAddrByRoom(roomId uint64) string {
 	// 示例格式 game-0.game-service.default.svc.cluster.local:50051
-	return "game-0.game-service.default.svc.cluster.local:50051"
+	//return "game-0.game-service.default.svc.cluster.local:50051"
+	return "172.16.111.60:9000"
 }
 
 // sendErrResp 下发错误响应

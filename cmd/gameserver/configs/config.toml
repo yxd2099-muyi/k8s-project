@@ -48,3 +48,4 @@ username  ="" #用户名
 password  ="" #密码
 [game]
 port="9000" # 当前服务的端口号，k8s 中同一种服务这些端口号一样 web 8088 gate 8090 game 9000
+max_room_num= 100 # 最大房间数量

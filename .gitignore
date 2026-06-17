@@ -33,3 +33,5 @@ go.work.sum
 .idea/
 cmd/webserver/runtime/
 k8s-web.tar
+cmd/gateserver/runtime/
+cmd/gameserver/runtime/

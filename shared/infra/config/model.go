@@ -13,5 +13,6 @@ type Web struct {
 	Port string `mapstructure:"port"`
 }
 type Game struct {
-	Port string `mapstructure:"port"`
+	Port       string `mapstructure:"port"`
+	MaxRoomNum int    `mapstructure:"max_room_num"`
 }

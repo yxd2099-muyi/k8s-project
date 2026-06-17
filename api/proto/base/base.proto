@@ -32,13 +32,13 @@ enum ErrCode {
 }
 // 顶层统一包裹帧
 message WsFrame {
-  FrameType frame_type = 1;//
-  FirstKind first_kind = 2;//
+  FrameType frame_type = 1;// 消息大类
+  FirstKind first_kind = 2;// 业务大类
   uint64 seq = 3;        // 请求序列号，响应原样带回，客户端异步匹配
   uint64 uid = 4;        // 用户ID
   ErrCode err_code = 5;  // 错误码
   string err_msg = 6;    // 错误详情
-  bytes payload = 7;        // 业务子消息序列化数据
+  bytes payload = 7;        // 业务子消息序列化数据 对应请求时候 ReqBody, 返回时候RespBody
   int64 timestamp = 8;// 客户端原样ts
   uint64 roomId = 9;//房间号
 }
@@ -52,8 +52,6 @@ message ReqBody {
 
 // 网关响应体 (body填充)
 message RespBody {
-//  uint32 cmd = 1;
-//  uint64 roomId = 2;// 房间号
   bytes payload = 1; // 实际返回业务数据
 }
 
