@@ -1,6 +1,7 @@
 package grpc_client
 
 import (
+	"fmt"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/shared/infra/grpclib"
 
@@ -40,6 +41,9 @@ func (m *GamePoolMgr) GetClient(gameAddr string) (pb_service.GameLogicClient, er
 		m.mu.Unlock()
 	}
 	conn := p.GetConn()
+	if conn == nil {
+		return nil, fmt.Errorf("target %s grpc pool unavailable", gameAddr)
+	}
 	return pb_service.NewGameLogicClient(conn), nil
 }
 
