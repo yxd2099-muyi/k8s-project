@@ -9,7 +9,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
-	"github.com/k8s/muyi/shared/infra/redisClient"
+	"github.com/k8s/muyi/shared/infra/rediscli"
 	"github.com/k8s/muyi/shared/kit"
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
@@ -38,7 +38,7 @@ var upgrader = websocket.Upgrader{
 
 type GateService struct {
 	cfg      config.Gate
-	redisCli *redisClient.Client
+	redisCli *rediscli.Client
 	hub      *hub.Hub
 	gamePool *grpc_client.GamePoolMgr
 	grpcSrv  *grpc.Server
@@ -55,7 +55,7 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 	ctx, cancel := context.WithCancel(context.Background())
 	svc := &GateService{
 		cfg:      cfg,
-		redisCli: redisClient.GetClient(),
+		redisCli: rediscli.GetClient(),
 		hub:      hub.NewHub(),
 		gamePool: grpc_client.NewGamePoolMgr(cfg.GrpcPoolSize),
 		gateAddr: gateAddr,

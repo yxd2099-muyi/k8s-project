@@ -1,4 +1,4 @@
-package redisClient
+package rediscli
 
 import (
 	"context"
@@ -49,4 +49,7 @@ func (r *Client) Close() {
 	if err != nil {
 		r.clog.Error("close redis client", zap.Error(err))
 	}
+}
+func (r *Client) GetNativeClient() *redis.Client {
+	return r.client
 }

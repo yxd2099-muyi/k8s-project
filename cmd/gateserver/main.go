@@ -7,7 +7,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
-	"github.com/k8s/muyi/shared/infra/redisClient"
+	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
 	"log"
 	"os"
@@ -25,7 +25,7 @@ func main() {
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("hello world")
-	rc := redisClient.GetClient()
+	rc := rediscli.GetClient()
 	cfg := config.GlobalConf
 	err = rc.Init(clog, &cfg.Redis)
 	if err != nil {

@@ -3,7 +3,7 @@ package client_conn
 import (
 	"context"
 	"github.com/k8s/muyi/shared/infra/config"
-	"github.com/k8s/muyi/shared/infra/redisClient"
+	"github.com/k8s/muyi/shared/infra/rediscli"
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"sync"
 	"sync/atomic"
@@ -25,14 +25,14 @@ type ClientConn struct {
 	wsConn     *websocket.Conn
 	writeChan  chan []byte // 写协程通道，读写分离
 	closeFlag  atomic.Bool
-	redisCli   *redisClient.Client
+	redisCli   *rediscli.Client
 	cfg        config.Gate
 	tickerPing *time.Ticker
 	wg         sync.WaitGroup
 	mu         sync.Mutex
 }
 
-func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *redisClient.Client, cfg config.Gate) *ClientConn {
+func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate) *ClientConn {
 	ctx, cancel := context.WithCancel(context.Background())
 	cli := &ClientConn{
 		ctx:        ctx,
