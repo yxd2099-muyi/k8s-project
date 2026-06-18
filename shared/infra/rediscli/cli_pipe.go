@@ -16,8 +16,6 @@ func (r *Client) PipelineExec(ctx context.Context, p redis.Pipeliner) error {
 	return err
 }
 func (r *Client) PipelineHashSetExec(ctx context.Context, key string, expire time.Duration, values ...interface{}) error {
-	//ctx, cancel := context.WithTimeout(context.Background(), TimeOut200)
-	//defer cancel()
 	p := r.client.Pipeline()
 	p.HSet(ctx, key, values...)
 	if expire > 0 {
