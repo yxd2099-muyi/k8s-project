@@ -2,7 +2,8 @@ package grpc_client
 
 import (
 	pb_service "github.com/k8s/muyi/api/pb/service"
-	"github.com/k8s/muyi/internal/gate/common/grpclib"
+	"github.com/k8s/muyi/shared/infra/grpclib"
+
 	"sync"
 )
 
