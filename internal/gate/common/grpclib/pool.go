@@ -23,7 +23,6 @@ func NewPool(target string, size int) (*Pool, error) {
 		conns:  make([]*grpc.ClientConn, 0, size),
 	}
 	for i := 0; i < size; i++ {
-		//conn, err := grpc.Dial(target, grpc.WithTransportCredentials(insecure.NewCredentials())) // 这里需要替换为当前推荐的方式。 要看下正常是如何使用的
 		conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(insecure.NewCredentials()))
 		if err != nil {
 			return nil, err

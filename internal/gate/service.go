@@ -181,7 +181,7 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	ctx = metadata.AppendToOutgoingContext(ctx,
 		cconst.GRpcContextFieldUID, kit.Uint64ToString(uid),
 	)
-	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid)
+	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid) // 服务内使用
 	// grpc调用GameLogic转发
 	rsp, err := gameCli.ForwardClientMsg(ctx, forwardReq)
 	s.clog.Debug("forward client msg", zap.Any("rsp", rsp), zap.Error(err))

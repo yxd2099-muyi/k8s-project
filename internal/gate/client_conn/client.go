@@ -2,9 +2,9 @@ package client_conn
 
 import (
 	"context"
-	"github.com/k8s/muyi/internal/gate/common/frame"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/redisClient"
+	"github.com/k8s/muyi/shared/kit/serializer"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -91,7 +91,7 @@ func (c *ClientConn) readLoop() {
 			switch msgType {
 			case websocket.BinaryMessage:
 				// 上层hub/网关逻辑处理WsFrame
-				wsFrame, err := frame.DecodeWsFrame(data)
+				wsFrame, err := serializer.DecodeWsFrame(data)
 				if err != nil {
 					continue
 				}
