@@ -40,6 +40,6 @@ func (s *GatePushServer) Push(ctx context.Context, req *pb_service.PushReq) (*pb
 		return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_ERROR)}, nil
 	}
 	// 批量推送
-	s.hub.BatchPush(req.GetUids(), data)
+	s.hub.BatchPushAsync(req.GetUids(), data)
 	return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_OK)}, nil
 }
