@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/gate/conn"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
@@ -21,10 +22,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/k8s/muyi/internal/gate/client_conn"
 	"github.com/k8s/muyi/internal/gate/grpc_client"
 	"github.com/k8s/muyi/internal/gate/grpc_server"
-	"github.com/k8s/muyi/internal/gate/hub"
 	"google.golang.org/grpc"
 )
 
@@ -39,7 +38,7 @@ var upgrader = websocket.Upgrader{
 type GateService struct {
 	cfg      config.Gate
 	redisCli *rediscli.Client
-	hub      *hub.Hub
+	hub      *conn.ConnManager
 	gamePool *grpc_client.GamePoolMgr
 	grpcSrv  *grpc.Server
 	httpSrv  *http.Server // 这个是否有必要
@@ -56,7 +55,7 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 	svc := &GateService{
 		cfg:      cfg,
 		redisCli: rediscli.GetClient(),
-		hub:      hub.NewHub(),
+		hub:      conn.NewConnMgr(),
 		gamePool: grpc_client.NewGamePoolMgr(cfg.GrpcPoolSize),
 		gateAddr: gateAddr,
 		grpcAddr: grpcAddr,
@@ -65,8 +64,7 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 		clog:     logger.L,
 	}
 	// 注册客户端帧回调
-	//client_conn.NewClientConn()
-	client_conn.RegisterFrameHandler(svc.handleWsFrame)
+	conn.RegisterFrameHandler(svc.handleWsFrame)
 	return svc
 }
 
@@ -122,19 +120,13 @@ func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 新建客户端连接
-	cli := client_conn.NewClientConn(ws, uid, s.gateAddr, s.redisCli, s.cfg)
+	//cli := client_conn.NewClientConn(ws, uid, s.gateAddr, s.redisCli, s.cfg)
+	cli := conn.NewClientConn(ws, uid, s.gateAddr, s.redisCli, s.cfg, s.hub)
 	// 注册到hub
 	if !s.hub.AddConn(uid, cli) {
 		cli.Close()
 		return
 	}
-	// 首次写入redis在线信息
-	_ = s.SetUserOnline(uid, s.gateAddr, s.cfg.RedisExpire)
-}
-
-// todo
-func (s *GateService) SetUserOnline(uid uint64, gateAddr string, expireTime int) error {
-	return nil
 }
 
 // handleWsFrame 处理客户端上行WsFrame，转发GameServer

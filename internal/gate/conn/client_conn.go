@@ -1,4 +1,4 @@
-package client_conn
+package conn
 
 import (
 	"context"
@@ -40,9 +40,10 @@ type ClientConn struct {
 	tickerPing *time.Ticker
 	wg         sync.WaitGroup
 	mu         sync.Mutex
+	connMgr    *ConnManager
 }
 
-func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate) *ClientConn {
+func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate, connMgr *ConnManager) *ClientConn {
 	ctx, cancel := context.WithCancel(context.Background())
 	cli := &ClientConn{
 		ctx:        ctx,
@@ -56,6 +57,7 @@ func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *redis
 		tickerPing: time.NewTicker(time.Duration(cfg.PingInterval) * time.Second),
 		userDb:     db.NewUserObj(),
 		clog:       logger.L,
+		connMgr:    connMgr,
 	}
 	// 3个常驻协程
 	cli.wg.Add(3)
@@ -265,7 +267,7 @@ func (c *ClientConn) Close() {
 
 	// 所有协程退出后再关闭writeChan，无协程读取，安全无panic
 	close(c.writeChan)
-
+	c.connMgr.DelConn(c.uid)
 	// 这条日志100%会执行
 	c.clog.Debug("client conn close finish all goroutine exit", zap.Uint64("uid", c.uid))
 }

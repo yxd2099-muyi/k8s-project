@@ -4,7 +4,7 @@ import (
 	"context"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
-	"github.com/k8s/muyi/internal/gate/hub"
+	"github.com/k8s/muyi/internal/gate/conn"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
@@ -13,11 +13,11 @@ import (
 
 type GatePushServer struct {
 	pb_service.UnimplementedGatePushServer
-	hub  *hub.Hub
+	hub  *conn.ConnManager
 	clog *zap.Logger
 }
 
-func NewGatePushServer(h *hub.Hub) *GatePushServer {
+func NewGatePushServer(h *conn.ConnManager) *GatePushServer {
 	return &GatePushServer{hub: h, clog: logger.L}
 }
 
