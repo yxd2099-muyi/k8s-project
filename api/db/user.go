@@ -7,6 +7,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
+	"time"
 )
 
 type User struct {
@@ -18,9 +19,13 @@ func NewUserObj() *User {
 	obj.rc = rediscli.GetClient()
 	return obj
 }
-func (r *User) SetUserSession(ctx context.Context, clog *zap.Logger, uId uint64, session *model.UserSession) error {
+func (r *User) DelUserSession(ctx context.Context, uId uint64) {
 	key := cconst.RedisKeyForUserSession(uId)
-	err := r.rc.PipelineHashSetExec(ctx, key, 0, session)
+	r.rc.Delete(ctx, key)
+}
+func (r *User) SetUserSession(ctx context.Context, clog *zap.Logger, uId uint64, session *model.UserSession, expire time.Duration) error {
+	key := cconst.RedisKeyForUserSession(uId)
+	err := r.rc.PipelineHashSetExec(ctx, key, expire, session)
 	if err != nil {
 		clog.Error("pipeline hash set failed", zap.Error(err))
 	}
