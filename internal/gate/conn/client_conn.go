@@ -208,7 +208,7 @@ func (c *ClientConn) syncUserOnlineLoop() {
 }
 
 func (c *ClientConn) SetUserOnline(uid uint64, gateAddr string, expireTime int) error {
-	ctx, cancel := context.WithTimeout(context.Background(), cconst.ExpireTimeOut2s)
+	ctx, cancel := context.WithTimeout(context.Background(), cconst.ContextTimeOut2s)
 	defer cancel()
 	session := &model.UserSession{
 		UserID:      uid,
@@ -222,7 +222,7 @@ func (c *ClientConn) SetUserOnline(uid uint64, gateAddr string, expireTime int) 
 }
 
 func (c *ClientConn) DelUserSession(uid uint64) {
-	ctx, cancel := context.WithTimeout(context.Background(), cconst.ExpireTimeOut2s)
+	ctx, cancel := context.WithTimeout(context.Background(), cconst.ContextTimeOut2s)
 	defer cancel()
 	c.userDb.DelUserSession(ctx, uid)
 }

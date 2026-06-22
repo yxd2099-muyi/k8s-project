@@ -2,10 +2,12 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/k8s/muyi/api/model"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/rediscli"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"time"
 )
@@ -48,4 +50,41 @@ func (r *User) GetUserSession(ctx context.Context, clog *zap.Logger, uId uint64)
 		return nil, fmt.Errorf("hscan failed: %w", err)
 	}
 	return &session, nil
+}
+func (r *User) GetSomeUsersSession(ctx context.Context, clog *zap.Logger, uids []uint64) ([]*model.UserSession, error) {
+	if len(uids) == 0 {
+		return nil, nil
+	}
+	pipe := r.rc.Pipeline()
+	futures := make([]*redis.MapStringStringCmd, len(uids))
+	for i, uid := range uids {
+		key := fmt.Sprintf("hash:user:session:%d", uid)
+		futures[i] = pipe.HGetAll(ctx, key)
+	}
+	_, err := pipe.Exec(ctx)
+	if err != nil && errors.Is(err, redis.Nil) {
+		return nil, err
+	}
+	result := make([]*model.UserSession, 0, len(uids))
+	for _, future := range futures {
+		err = future.Err()
+		if err != nil {
+			if errors.Is(err, redis.Nil) {
+				// key 不存在，跳过或记录日志
+				continue
+			}
+			clog.Error("GetSomeUsersSession", zap.Error(err))
+			continue
+		}
+
+		var u model.UserSession
+		err = future.Scan(&u)
+		if err != nil {
+			clog.Error("GetSomeUsersSession", zap.Error(err))
+			continue
+		}
+		result = append(result, &u)
+	}
+	clog.Info("GetSomeUsersSession result", zap.Any("result", result))
+	return result, nil
 }

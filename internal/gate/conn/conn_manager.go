@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"github.com/k8s/muyi/shared/infra/logger"
+	"go.uber.org/zap"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -17,18 +18,6 @@ type ClientConnInter interface {
 	// Close 幂等关闭连接，重复调用无副作用
 	Close()
 }
-
-// Logger 日志接口，外部可注入自定义日志实现
-type Logger interface {
-	Info(format string, v ...any)
-	Error(format string, v ...any)
-}
-
-// defaultLogger 标准库日志实现
-type defaultLogger struct{}
-
-func (d defaultLogger) Info(format string, v ...any)  { log.Printf("[INFO] "+format, v...) }
-func (d defaultLogger) Error(format string, v ...any) { log.Printf("[ERROR] "+format, v...) }
 
 // ConnManagerConfig 连接管理器配置
 type ConnManagerConfig struct {
@@ -50,7 +39,7 @@ func DefaultConfig() ConnManagerConfig {
 // 基于sync.Map管理uid长连接，支持批量并发推送、全服广播、优雅关闭、监控埋点
 type ConnManager struct {
 	cfg    ConnManagerConfig
-	logger Logger
+	logger *zap.Logger
 
 	conns sync.Map    // key:uint64 uid, value:ClientConnInter
 	shut  atomic.Bool // 全局关闭标记 true=停止，禁止新增连接
@@ -74,11 +63,11 @@ type pushTask struct {
 
 // NewConnMgr 使用默认配置创建管理器
 func NewConnMgr() *ConnManager {
-	return NewConnMgrWithConfig(DefaultConfig(), defaultLogger{})
+	return NewConnMgrWithConfig(DefaultConfig(), logger.L)
 }
 
 // NewConnMgrWithConfig 自定义配置+日志器创建管理器
-func NewConnMgrWithConfig(cfg ConnManagerConfig, logger Logger) *ConnManager {
+func NewConnMgrWithConfig(cfg ConnManagerConfig, logger *zap.Logger) *ConnManager {
 	if cfg.WorkerNum <= 0 {
 		cfg.WorkerNum = DefaultConfig().WorkerNum
 	}
@@ -107,7 +96,7 @@ func (m *ConnManager) workerLoop() {
 func (m *ConnManager) handlePushTask(task pushTask) {
 	defer func() {
 		if err := recover(); err != nil {
-			m.logger.Error("batch push panic recover, err=%v", err)
+			m.logger.Error(fmt.Sprintf("batch push panic recover, err=%v", err))
 		}
 	}()
 	// 拷贝消息切片，避免底层数组共享导致并发数据竞争
@@ -122,7 +111,7 @@ func (m *ConnManager) handlePushTask(task pushTask) {
 		err := cli.WriteMsg(dataCopy)
 		if err != nil {
 			m.pushFailCnt.Add(1)
-			m.logger.Error("push msg failed, uid=%d err=%s", uid, err.Error())
+			m.logger.Error(fmt.Sprintf("push msg failed, uid=%d err=%s", uid, err.Error()))
 			if m.cfg.AutoKickOnPushFail {
 				m.DelConn(uid)
 			}
@@ -134,16 +123,16 @@ func (m *ConnManager) handlePushTask(task pushTask) {
 // return false: 管理器已关闭 / uid已存在；true=注册成功，计数+1
 func (m *ConnManager) AddConn(uid uint64, cli ClientConnInter) bool {
 	if m.shut.Load() {
-		m.logger.Error("add conn failed, manager is shutdown, uid=%d", uid)
+		m.logger.Error(fmt.Sprintf("add conn failed, manager is shutdown, uid=%d", uid))
 		return false
 	}
 	_, loaded := m.conns.LoadOrStore(uid, cli)
 	if loaded {
-		m.logger.Info("add conn skip, uid already exists, uid=%d", uid)
+		m.logger.Info(fmt.Sprintf("add conn succ, uid=%d", uid))
 		return false
 	}
 	m.onlineCount.Add(1)
-	m.logger.Info("add conn success, uid=%d online=%d", uid, m.GetOnlineNum())
+	m.logger.Info(fmt.Sprintf("add conn success, uid=%d online=%d", uid, m.GetOnlineNum()))
 	return true
 }
 
@@ -151,20 +140,20 @@ func (m *ConnManager) AddConn(uid uint64, cli ClientConnInter) bool {
 // 自动关闭旧连接，成功返回true；管理器关闭返回false
 func (m *ConnManager) ReplaceConn(uid uint64, newCli ClientConnInter) bool {
 	if m.shut.Load() {
-		m.logger.Error("replace conn failed, manager shutdown, uid=%d", uid)
+		m.logger.Error(fmt.Sprintf("replace conn failed, manager shutdown, uid=%d", uid))
 		return false
 	}
 	oldVal, loaded := m.conns.Swap(uid, newCli)
 	if !loaded {
 		// 无旧连接，新增在线计数
 		m.onlineCount.Add(1)
-		m.logger.Info("replace conn no old conn, add new uid=%d online=%d", uid, m.GetOnlineNum())
+		m.logger.Info(fmt.Sprintf("replace conn no old conn, add new uid=%d online=%d", uid, m.GetOnlineNum()))
 	} else {
 		// 关闭旧连接
 		if oldCli := castClientConn(oldVal); oldCli != nil {
 			oldCli.Close()
 			m.replaceCnt.Add(1)
-			m.logger.Info("replace conn close old client, uid=%d", uid)
+			m.logger.Info(fmt.Sprintf("replace conn close old client, uid=%d", uid))
 		}
 	}
 	return true
@@ -183,7 +172,7 @@ func (m *ConnManager) DelConn(uid uint64) {
 	cli.Close()
 	m.onlineCount.Add(^uint64(0)) // 原子减1
 	m.delCnt.Add(1)
-	m.logger.Info("del conn success, uid=%d online=%d", uid, m.GetOnlineNum())
+	m.logger.Info(fmt.Sprintf("del conn success, uid=%d online=%d", uid, m.GetOnlineNum()))
 }
 
 // GetConn 获取用户连接
@@ -222,7 +211,7 @@ func (m *ConnManager) BatchPushSync(uids []uint64, data []byte) {
 		err := cli.WriteMsg(dataCopy)
 		if err != nil {
 			m.pushFailCnt.Add(1)
-			m.logger.Error("sync push failed uid=%d err=%s", uid, err.Error())
+			m.logger.Error(fmt.Sprintf("sync push failed uid=%d err=%s", uid, err.Error()))
 			if m.cfg.AutoKickOnPushFail {
 				m.DelConn(uid)
 			}
@@ -243,7 +232,7 @@ func (m *ConnManager) BroadcastAll(data []byte) {
 		err := cli.WriteMsg(dataCopy)
 		if err != nil {
 			m.pushFailCnt.Add(1)
-			m.logger.Error("broadcast push failed uid=%d err=%s", uid, err.Error())
+			m.logger.Error(fmt.Sprintf("broadcast push failed uid=%d err=%s", uid, err.Error()))
 			if m.cfg.AutoKickOnPushFail {
 				m.DelConn(uid)
 			}
@@ -303,7 +292,7 @@ func (m *ConnManager) Shutdown() error {
 	})
 	// 统一清零在线计数
 	m.onlineCount.Store(0)
-	m.logger.Info("shutdown finish, closed conn count=%d", closeCnt)
+	m.logger.Info(fmt.Sprintf("shutdown finish, closed conn count=%d", closeCnt))
 	return nil
 }
 

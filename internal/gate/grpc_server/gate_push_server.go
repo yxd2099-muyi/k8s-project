@@ -39,7 +39,17 @@ func (s *GatePushServer) Push(ctx context.Context, req *pb_service.PushReq) (*pb
 	if err != nil {
 		return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_ERROR)}, nil
 	}
+	pushUids := req.GetUids()
+	if len(pushUids) == 0 {
+		// 全量广播
+		s.hub.BroadcastAll(data)
+	} else {
+		err = s.hub.BatchPushAsync(req.GetUids(), data)
+		if err != nil {
+			s.clog.Warn("[GatePushServer] BatchPushAsync err", zap.Error(err))
+		}
+	}
 	// 批量推送
-	s.hub.BatchPushAsync(req.GetUids(), data)
+
 	return &pb_service.PushResp{Code: int32(pb_base.ErrCode_EC_OK)}, nil
 }

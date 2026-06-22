@@ -7,10 +7,14 @@ const (
 const (
 	WEB_PORT = "WEB_PORT"
 )
-const (
-	GAME_PORT = "GAME_PORT"
-)
+
 const (
 	GATE_WS_PORT   = "GATE_WS_PORT"
 	GATE_GRPC_PORT = "GATE_GRPC_PORT"
+	GateIP         = "GATE_Pod_IP"
+)
+
+const (
+	GamePodIP   = "POD_IP"
+	GamePodPort = "POD_PORT"
 )

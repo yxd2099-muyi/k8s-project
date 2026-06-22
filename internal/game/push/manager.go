@@ -3,7 +3,9 @@ package push
 import (
 	"context"
 	"fmt"
+	"github.com/k8s/muyi/api/db"
 	pb_push "github.com/k8s/muyi/api/pb/push"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
@@ -38,6 +40,7 @@ type PushManager struct {
 
 	workerPool chan struct{} // 协程池限流
 	clog       *zap.Logger
+	userDb     *db.User
 }
 
 // ===================== 全局单例 =====================
@@ -60,14 +63,41 @@ func NewPushManager() *PushManager {
 		gateConn:   make(map[string]*gateClientWrap),
 		workerPool: make(chan struct{}, batchPushMaxWorker),
 		clog:       logger.L,
+		userDb:     db.NewUserObj(),
 	}
 }
 
 // getUserGateAddr 获取用户所在网关地址（业务自行实现redis查询）
-func (p *PushManager) getUserGateAddr(uid uint64) (string, error) {
+func (p *PushManager) getUserGateAddr(clog *zap.Logger, uid uint64) (string, error) {
 	// 示例：从redis/内存路由表查询uid绑定gate地址
-	addr := "172.16.111.60:8099"
+	ctx, cancel := context.WithTimeout(context.Background(), cconst.ContextTimeOut3s)
+	defer cancel()
+	s, err := p.userDb.GetUserSession(ctx, clog, uid)
+	if err != nil {
+		return "", err
+	}
+	addr := s.GateAddress
+	//addr = "172.16.111.60:8099"
 	return addr, nil
+}
+
+func (p *PushManager) userGateGroup(clog *zap.Logger, uids []uint64) (map[string][]uint64, error) {
+	// 示例：从redis/内存路由表查询uid绑定gate地址
+	ctx, cancel := context.WithTimeout(context.Background(), cconst.ContextTimeOut3s)
+	defer cancel()
+	s, err := p.userDb.GetSomeUsersSession(ctx, clog, uids)
+	if err != nil {
+		return nil, err
+	}
+	clog.Debug("get gate addr", zap.Uint64s("uids", uids), zap.Any("session", s), zap.Any("size", len(s)))
+	gateGroup := make(map[string][]uint64)
+	for _, session := range s {
+		addr, uid := session.GateAddress, session.UserID
+		//addr, uid := "172.16.111.60:8099", session.UserID
+		gateGroup[addr] = append(gateGroup[addr], uid)
+	}
+	clog.Debug("gate group", zap.Any("gateGroup", gateGroup))
+	return gateGroup, nil
 }
 
 // getGateCtx 生成标准推送ctx：带超时、可扩展metadata透传trace
@@ -131,21 +161,17 @@ func (p *PushManager) BatchPushUser(clog *zap.Logger, uids []uint64, pushBody *p
 	if len(uids) == 0 || pushBody == nil {
 		return
 	}
-
+	p.clog.Debug("batch push user", zap.Int("uids", len(uids)))
 	// 1. 按网关地址分组uid
-	gateGroup := make(map[string][]uint64)
-	for _, uid := range uids {
-		gateAddr, err := p.getUserGateAddr(uid)
-		if err != nil || gateAddr == "" {
-			clog.Warn("get user gate addr empty, skip push", zap.Uint64("uid", uid), zap.Error(err))
-			continue
-		}
-		gateGroup[gateAddr] = append(gateGroup[gateAddr], uid)
+	gateGroup, err := p.userGateGroup(clog, uids)
+	if err != nil {
+		p.clog.Error("get gate group failed", zap.Error(err))
+		return
 	}
 	if len(gateGroup) == 0 {
 		return
 	}
-
+	p.clog.Info("get gate group success", zap.Any("gate_group", gateGroup))
 	var wg sync.WaitGroup
 	// 2. 每个网关一条推送协程，受workerPool限流
 	for gateAddr, targetUids := range gateGroup {

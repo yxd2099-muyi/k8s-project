@@ -7,6 +7,8 @@ import (
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/gate/conn"
+	"github.com/k8s/muyi/internal/gate/grpc_client"
+	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
@@ -17,13 +19,10 @@ import (
 	"google.golang.org/grpc/metadata"
 	"net"
 	"net/http"
-	"os"
 	"strconv"
 	"sync"
 	"time"
 
-	"github.com/k8s/muyi/internal/gate/grpc_client"
-	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"google.golang.org/grpc"
 )
 
@@ -41,8 +40,8 @@ type GateService struct {
 	hub      *conn.ConnManager
 	gamePool *grpc_client.GamePoolMgr
 	grpcSrv  *grpc.Server
-	httpSrv  *http.Server // 这个是否有必要
-	gateAddr string       // 当前gate对外地址，redis存储使用
+	httpSrv  *http.Server
+	gateAddr string
 	grpcAddr string
 	wg       sync.WaitGroup
 	ctx      context.Context
@@ -63,7 +62,6 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 		cancel:   cancel,
 		clog:     logger.L,
 	}
-	// 注册客户端帧回调
 	conn.RegisterFrameHandler(svc.handleWsFrame)
 	return svc
 }
@@ -77,111 +75,131 @@ func (s *GateService) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		lis, err := net.Listen("tcp", fmt.Sprintf("%s", s.grpcAddr))
+		lis, err := net.Listen("tcp", s.grpcAddr)
 		if err != nil {
-			panic(err)
+			s.clog.Error("grpc server listen failed", zap.String("addr", s.grpcAddr), zap.Error(err))
+			return // 移除os.Exit，交给上层Shutdown处理
 		}
+		s.clog.Info("gate grpc server listen success", zap.String("addr", s.grpcAddr))
 		err = s.grpcSrv.Serve(lis)
-		if err != nil {
-			s.clog.Error("grpc server start error", zap.Error(err))
-			os.Exit(1)
+		if err != nil && err != grpc.ErrServerStopped {
+			s.clog.Error("grpc server serve error", zap.Error(err))
 		}
+		s.clog.Info("gate grpc server exited")
 	}()
 
 	// 2. 启动websocket http服务
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.wsHandler)
-	httpSrv := &http.Server{
-		Addr:    fmt.Sprintf("%s", s.gateAddr),
+	s.httpSrv = &http.Server{
+		Addr:    s.gateAddr,
 		Handler: mux,
+		// 增加http服务超时，防止连接永久挂住
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  30 * time.Second,
 	}
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		err := httpSrv.ListenAndServe()
-		if err != nil {
-			s.clog.Error("http server start error", zap.Error(err))
-			os.Exit(1)
+		s.clog.Info("gate http ws server listen start", zap.String("addr", s.gateAddr))
+		err := s.httpSrv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			s.clog.Error("http ws server listen failed", zap.Error(err))
 		}
+		s.clog.Info("gate http ws server exited")
 	}()
-	s.httpSrv = httpSrv
 	return nil
 }
 
 // wsHandler 客户端websocket连接入口
 func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
+	// gate全局关闭时拒绝新连接
+	select {
+	case <-s.ctx.Done():
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	default:
+	}
+
 	uidStr := r.URL.Query().Get("uid")
 	uid, err := strconv.ParseUint(uidStr, 10, 64)
 	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		s.clog.Warn("websocket upgrade fail", zap.Uint64("uid", uid), zap.Error(err))
 		return
 	}
-	// 新建客户端连接
-	//cli := client_conn.NewClientConn(ws, uid, s.gateAddr, s.redisCli, s.cfg)
-	cli := conn.NewClientConn(ws, uid, s.gateAddr, s.redisCli, s.cfg, s.hub)
-	// 注册到hub
-	if !s.hub.AddConn(uid, cli) {
+
+	//
+	cli := conn.NewClientConn(ws, uid, s.grpcAddr, s.redisCli, s.cfg, s.hub)
+	if !s.hub.ReplaceConn(uid, cli) {
 		cli.Close()
 		return
 	}
+	//if !s.hub.AddConn(uid, cli) {
+	//	cli.Close()
+	//	return
+	//}
 }
 
 // handleWsFrame 处理客户端上行WsFrame，转发GameServer
 func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.clog.Error("handleWsFrame panic", zap.Any("r", r))
+			s.clog.Error("handleWsFrame panic recover", zap.Any("panic", r), zap.Uint64("uid", frame.Uid), zap.Uint64("roomId", frame.RoomId))
 		}
 	}()
-	// 只处理客户端请求
 	if frame.FrameType != pb_base.FrameType_FRAME_REQUEST {
 		return
 	}
 	uid := frame.Uid
 	roomId := frame.RoomId
-	// 模拟：根据roomId获取对应gameserver地址（业务自行实现room -> game pod路由）
+
 	gameAddr := s.getGameAddrByRoom(roomId)
 	if gameAddr == "" {
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "game server not found")
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "game server not found by roomId")
 		return
 	}
-	// 获取game grpc client
+
 	gameCli, err := s.gamePool.GetClient(gameAddr)
-	s.clog.Debug("get game client", zap.String("gameAddr", gameAddr), zap.Error(err))
 	if err != nil {
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game fail")
+		s.clog.Warn("get game grpc client fail", zap.String("gameAddr", gameAddr), zap.Uint64("roomId", roomId), zap.Error(err))
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game server failed")
 		return
 	}
+
 	reqBody := frame.GetPayload()
 	reqBodyPro := &pb_base.ReqBody{}
 	err = serializer.DecodeProto(reqBody, reqBodyPro)
 	if err != nil {
-		s.clog.Error("decode req body fail", zap.Error(err))
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "decode req body fail")
+		s.clog.Error("decode client req body fail", zap.Uint64("uid", uid), zap.Error(err))
+		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "request proto decode error")
 		return
 	}
-	// 构造转发请求
+
 	forwardReq := &pb_service.ForwardReq{
 		Req: reqBodyPro,
 	}
-	// 传递上下文
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+	// grpc调用超时控制
+	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
 	defer cancel()
 	ctx = metadata.AppendToOutgoingContext(ctx,
 		cconst.GRpcContextFieldUID, kit.Uint64ToString(uid),
 	)
-	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid) // 服务内使用
-	// grpc调用GameLogic转发
+	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid)
+
 	rsp, err := gameCli.ForwardClientMsg(ctx, forwardReq)
-	s.clog.Debug("forward client msg", zap.Any("rsp", rsp), zap.Error(err))
 	if err != nil {
+		s.clog.Warn("forward client msg to game fail", zap.Uint64("uid", uid), zap.String("gameAddr", gameAddr), zap.Error(err))
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, err.Error())
 		return
 	}
-	// 封装响应WsFrame回写给客户端
+
 	respFrame := &pb_base.WsFrame{
 		FrameType: pb_base.FrameType_FRAME_RESPONSE,
 		FirstKind: frame.FirstKind,
@@ -195,9 +213,10 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	}
 	data, err := serializer.EncodeProto(respFrame)
 	if err != nil {
-		s.clog.Error("encode resp frame fail", zap.Error(err))
+		s.clog.Error("encode response ws frame fail", zap.Uint64("uid", uid), zap.Error(err))
+		return
 	}
-	s.clog.Debug("encode resp frame data", zap.Any("frame", respFrame))
+
 	cli, ok := s.hub.GetConn(uid)
 	if ok {
 		_ = cli.WriteMsg(data)
@@ -216,38 +235,75 @@ func (s *GateService) sendErrResp(origin *pb_base.WsFrame, uid uint64, code pb_b
 	}
 	data, err := serializer.EncodeProto(respFrame)
 	if err != nil {
-		s.clog.Error("encode resp fail", zap.Error(err))
+		s.clog.Error("encode error resp frame fail", zap.Uint64("uid", uid), zap.Error(err))
 		return
 	}
 	cli, ok := s.hub.GetConn(uid)
 	if ok {
-		err = cli.WriteMsg(data)
-		if err != nil {
-			s.clog.Error("write resp fail", zap.Error(err))
+		if err := cli.WriteMsg(data); err != nil {
+			s.clog.Warn("write error resp to client fail", zap.Uint64("uid", uid), zap.Error(err))
 		}
 	}
 }
 
-// getGameAddrByRoom 根据roomId路由game pod（k8s statefulset分片逻辑）
+// getGameAddrByRoom 根据roomId路由game pod，可替换为redis分片实现
 func (s *GateService) getGameAddrByRoom(roomId uint64) string {
-	// 示例格式 game-0.game-service.default.svc.cluster.local:50051
-	//return "game-0.game-service.default.svc.cluster.local:50051"
+	// 生产环境替换为redis分片路由逻辑
 	return "172.16.111.60:9000"
 }
 
-// Shutdown 优雅关闭gate所有资源
+// Shutdown 优雅关闭gate所有资源，增加超时兜底、修复关闭顺序、解决wg死锁
+// 传入外层ctx用于全局进程关闭超时控制
 func (s *GateService) Shutdown(ctx context.Context) error {
+	const shutdownMaxWait = 15 * time.Second
+	// 步骤1：发送全局关闭信号，所有子协程感知
 	s.cancel()
-	// 关闭grpc服务
+	s.clog.Info("Shutdown step1: trigger global cancel signal")
+
+	// 步骤2：优先关闭HTTP WS服务，拒绝新客户端连接、断开存量ws长连接
+	httpShutdownCtx, httpCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer httpCancel()
+	if err := s.httpSrv.Shutdown(httpShutdownCtx); err != nil {
+		s.clog.Error("Shutdown step2: http server shutdown error", zap.Error(err))
+	} else {
+		s.clog.Info("Shutdown step2: http ws server shutdown complete")
+	}
+
+	// 步骤3：关闭Gate GRPC服务（Game侧推送gate的入口）
 	s.grpcSrv.GracefulStop()
-	// 关闭hub所有ws连接
+	s.clog.Info("Shutdown step3: gate grpc server graceful stop complete")
+
+	// 步骤4：关闭所有在线客户端ws连接管理器
 	s.hub.Shutdown()
-	// 关闭game grpc连接池
+	s.clog.Info("Shutdown step4: all client ws connections closed")
+
+	// 步骤5：关闭Game服务GRPC连接池
 	s.gamePool.Shutdown()
-	// 等待所有协程退出
-	s.wg.Wait()
-	s.httpSrv.Shutdown(ctx)
-	// 关闭redis
-	//_ = s.redisCli.Close()
+	s.clog.Info("Shutdown step5: game grpc client pool shutdown complete")
+
+	// 步骤6：设置超时等待所有wg协程退出，解决永久阻塞卡死
+	waitDone := make(chan struct{}, 1)
+	go func() {
+		s.wg.Wait()
+		waitDone <- struct{}{}
+	}()
+
+	select {
+	case <-waitDone:
+		s.clog.Info("Shutdown step6: all background goroutine exited normally")
+	case <-time.After(shutdownMaxWait):
+		s.clog.Error("Shutdown step6: wait wg timeout, some goroutine stuck, force exit")
+		return fmt.Errorf("shutdown wait wg timeout %s", shutdownMaxWait)
+	case <-ctx.Done():
+		s.clog.Error("Shutdown step6: outer context canceled while waiting wg")
+		return ctx.Err()
+	}
+
+	// 步骤7：关闭redis连接（按需开启）
+	//if err := s.redisCli.Close(); err != nil {
+	//	s.clog.Error("Shutdown step7: redis client close error", zap.Error(err))
+	//} else {
+	//	s.clog.Info("Shutdown step7: redis client closed")
+	//}
 	return nil
 }
