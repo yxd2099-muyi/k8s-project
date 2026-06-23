@@ -184,8 +184,8 @@ func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
 
 // Register 注册KV，绑定共享租约，存入本地注册缓存
 func (lec *LeaseEtcdClient) Register(ctx context.Context, key, value string) error {
-	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
-	defer cancel()
+	//ctx, cancel := context.WithTimeout(ctx, OpTimeout)
+	//defer cancel()
 	_, err := lec.client.Put(ctx, key, value, clientv3.WithLease(lec.leaseID))
 	if err != nil {
 		return fmt.Errorf("register put err: %w", err)
@@ -269,7 +269,7 @@ func (lec *LeaseEtcdClient) WatchPrefix(prefix string, handler cconst.UpdateEtcd
 			default:
 			}
 
-			watchChan := lec.client.Watch(lec.globalCtx, prefix, clientv3.WithPrefix())
+			watchChan := lec.client.Watch(lec.globalCtx, prefix, clientv3.WithPrefix(), clientv3.WithPrevKV())
 			valid := false
 			for resp := range watchChan {
 				valid = true
@@ -280,6 +280,14 @@ func (lec *LeaseEtcdClient) WatchPrefix(prefix string, handler cconst.UpdateEtcd
 				for _, ev := range resp.Events {
 					k := string(ev.Kv.Key)
 					v := string(ev.Kv.Value)
+					switch ev.Type {
+					case clientv3.EventTypeDelete:
+						var oldVal string
+						if ev.PrevKv != nil {
+							oldVal = string(ev.PrevKv.Value)
+						}
+						v = oldVal
+					}
 					handler(k, v, ev.Type)
 				}
 			}

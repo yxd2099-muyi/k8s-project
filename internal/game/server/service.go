@@ -83,7 +83,7 @@ func (s *GameService) Start() error {
 		clog.Error("serializer game service failed", zap.Error(err))
 		return err
 	}
-	etcdKey := common.GetEtcdRoomServerKey()
+	etcdKey := etcdx.GetEtcdRoomServerKey(podRoomInfo.GrpcAddr)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	err = s.etcdCli.Register(ctx, etcdKey, string(podRoomInfoStr))

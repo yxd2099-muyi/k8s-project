@@ -9,6 +9,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/env"
+	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
@@ -42,6 +43,12 @@ func main() {
 	//grpcAddr := fmt.Sprintf(":%s", gPort)
 	gateAddr, grpcAddr := getAddress()
 	clog.Info("grpc addr", zap.String("gateAddr", gateAddr), zap.String("grpcAddr", grpcAddr))
+	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
+	if err != nil {
+		clog.Error("init etcd failed", zap.Error(err))
+		return
+	}
+	defer etcdCli.Close()
 	gateSvc := gate.NewGateService(cfg.Gate, gateAddr, grpcAddr)
 	err = gateSvc.Start()
 	if err != nil {

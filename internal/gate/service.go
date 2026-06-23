@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/k8s/muyi/api/model"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/gate/conn"
@@ -11,10 +12,13 @@ import (
 	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
+	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"github.com/k8s/muyi/shared/kit"
 	"github.com/k8s/muyi/shared/kit/serializer"
+	"go.etcd.io/etcd/api/v3/mvccpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"net"
@@ -34,6 +38,14 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+//	type GameNode struct {
+//		PodName    string `json:"pod_name"`
+//		PodIP      string `json:"pod_ip"`
+//		GrpcAddr   string `json:"grpc_addr"` // podIP:9000
+//		RoomMin    uint32 `json:"room_min"`
+//		RoomMax    uint32 `json:"room_max"`
+//		MaxRoomCfg uint32 `json:"max_room_cfg"`
+//	}
 type GateService struct {
 	cfg      config.Gate
 	redisCli *rediscli.Client
@@ -47,6 +59,9 @@ type GateService struct {
 	ctx      context.Context
 	cancel   context.CancelFunc
 	clog     *zap.Logger
+	//roomServerInfo    []*model.GameNode
+	roomServerInfoMap sync.Map // key: address,value : GameNode
+	etcdCli           *etcdx.LeaseEtcdClient
 }
 
 func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
@@ -66,8 +81,41 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 	return svc
 }
 
+func (s *GateService) initRoomServerInfo(prefixKey string) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	m, err := s.etcdCli.PrefixGet(ctx, prefixKey)
+	if err != nil {
+		s.clog.Error("watch room server info failed", zap.Error(err))
+		return
+	}
+	for _, v := range m {
+		var podInfo model.GameNode
+		err = serializer.DecodeJsonForString(v, &podInfo)
+		if err != nil {
+			s.clog.Error("watch room server info failed", zap.Error(err))
+			continue
+		}
+		s.roomServerInfoMap.Store(podInfo.GrpcAddr, &podInfo)
+	}
+}
+
+// 在watch 之前应该先做
+func (s *GateService) watchRoomServerInfo() {
+	prefixKey := etcdx.GetEtcdRoomServerPrefixKey()
+	s.initRoomServerInfo(prefixKey)
+	s.clog.Debug("watchRoomServerInfo", zap.Any("prefixKey", prefixKey))
+	s.etcdCli.WatchPrefix(prefixKey, s.handleGameEtcdInfo)
+}
+
 // Start 启动WS服务 + GRPC推送服务
 func (s *GateService) Start() error {
+	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
+	if err != nil {
+		return err
+	}
+	s.etcdCli = etcdCli
+	s.watchRoomServerInfo() // watch room 服务信息
 	// 1. 启动gate grpc服务（game调用推送）
 	s.grpcSrv = grpc.NewServer()
 	pushSrv := grpc_server.NewGatePushServer(s.hub)
@@ -150,7 +198,7 @@ func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
 func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	defer func() {
 		if r := recover(); r != nil {
-			s.clog.Error("handleWsFrame panic recover", zap.Any("panic", r), zap.Uint64("uid", frame.Uid), zap.Uint64("roomId", frame.RoomId))
+			s.clog.Error("handleWsFrame panic recover", zap.Any("panic", r), zap.Uint64("uid", frame.Uid), zap.Any("roomId", frame.RoomId))
 		}
 	}()
 	if frame.FrameType != pb_base.FrameType_FRAME_REQUEST {
@@ -159,15 +207,15 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	uid := frame.Uid
 	roomId := frame.RoomId
 
-	gameAddr := s.getGameAddrByRoom(roomId)
-	if gameAddr == "" {
+	gameAddr, found := s.getGameAddrByRoom(roomId)
+	if gameAddr == "" || !found {
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "game server not found by roomId")
 		return
 	}
 
 	gameCli, err := s.gamePool.GetClient(gameAddr)
 	if err != nil {
-		s.clog.Warn("get game grpc client fail", zap.String("gameAddr", gameAddr), zap.Uint64("roomId", roomId), zap.Error(err))
+		s.clog.Warn("get game grpc client fail", zap.String("gameAddr", gameAddr), zap.Any("roomId", roomId), zap.Error(err))
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game server failed")
 		return
 	}
@@ -247,9 +295,48 @@ func (s *GateService) sendErrResp(origin *pb_base.WsFrame, uid uint64, code pb_b
 }
 
 // getGameAddrByRoom 根据roomId路由game pod，可替换为redis分片实现
-func (s *GateService) getGameAddrByRoom(roomId uint64) string {
+func (s *GateService) getGameAddrByRoom(roomId uint32) (string, bool) {
 	// 生产环境替换为redis分片路由逻辑
-	return "172.16.111.60:9000"
+	var targetAddr string
+	found := false
+	s.roomServerInfoMap.Range(func(k, v interface{}) bool {
+		addr, ok := k.(string)
+		if !ok {
+			return true
+		}
+		node, ok := v.(*model.GameNode)
+		if !ok || node == nil {
+			return true
+		}
+		if roomId >= node.RoomMin && roomId <= node.RoomMax {
+			targetAddr = addr
+			found = true
+			// 返回false，直接终止Range遍历，节省性能
+			return false
+		}
+		return true
+	})
+	//targetAddr = "172.16.111.60:9000"
+	//found = true
+	return targetAddr, found
+}
+
+func (s *GateService) handleGameEtcdInfo(key, value string, eType mvccpb.Event_EventType) {
+
+	var podInfo model.GameNode
+	s.clog.Debug("handle game etcd info", zap.String("key", key), zap.String("value", value), zap.Any("type", eType))
+	err := serializer.DecodeJsonForString(value, &podInfo)
+	if err != nil {
+		s.clog.Error("decode game etcd info fail", zap.String("key", key), zap.String("value", value))
+		return
+	}
+	address := podInfo.GrpcAddr
+	switch eType {
+	case clientv3.EventTypePut:
+		s.roomServerInfoMap.Store(address, &podInfo)
+	case clientv3.EventTypeDelete:
+		s.roomServerInfoMap.Delete(address)
+	}
 }
 
 // Shutdown 优雅关闭gate所有资源，增加超时兜底、修复关闭顺序、解决wg死锁

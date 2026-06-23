@@ -87,7 +87,7 @@ func NewWsClient(uid uint64) (*WsClient, error) {
 func (c *WsClient) SendRequest(
 	firstKind pb_base.FirstKind,
 	cmd pb_room.CmdRoomKind,
-	roomId uint64,
+	roomId uint32,
 	bizPayload []byte,
 ) (*pb_base.WsFrame, error) {
 	if c.closeFlag.Load() {
@@ -151,7 +151,7 @@ func (c *WsClient) SendRequest(
 }
 
 // SendCreateRoom 快捷封装：发送创建房间请求
-func (c *WsClient) SendCreateRoom(roomId uint64, bizArgs []byte) (*pb_base.WsFrame, error) {
+func (c *WsClient) SendCreateRoom(roomId uint32, bizArgs []byte) (*pb_base.WsFrame, error) {
 	return c.SendRequest(
 		pb_base.FirstKind_FIRST_ROOM,
 		//pb_room.CmdRoomKind_Cmd_ROOM_UNKNOW,
@@ -291,7 +291,7 @@ func main() {
 	defer client.Close()
 
 	// 示例1：发送创建房间请求，房间号100001，无业务参数
-	resp, err := client.SendCreateRoom(100001, []byte{})
+	resp, err := client.SendCreateRoom(19, []byte{})
 	if err != nil {
 		fmt.Println("send create room failed:", err)
 		return
