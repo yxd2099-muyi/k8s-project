@@ -110,10 +110,8 @@ func (s *GateService) watchRoomServerInfo() {
 
 // Start 启动WS服务 + GRPC推送服务
 func (s *GateService) Start() error {
-	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
-	if err != nil {
-		return err
-	}
+	etcdCli := etcdx.GetGlobalLeaseEtcd()
+	
 	s.etcdCli = etcdCli
 	s.watchRoomServerInfo() // watch room 服务信息
 	// 1. 启动gate grpc服务（game调用推送）

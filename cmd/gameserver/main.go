@@ -38,7 +38,7 @@ func main() {
 		return
 	}
 	defer rc.Close()
-	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
+	etcdCli, err := etcdx.InitGlobalLeaseEtcd()
 	if err != nil {
 		clog.Error("init etcd failed", zap.Error(err))
 		return

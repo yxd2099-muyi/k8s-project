@@ -45,7 +45,10 @@ type LeaseEtcdClient struct {
 	wg           sync.WaitGroup
 }
 
-func GetGlobalLeaseEtcd() (*LeaseEtcdClient, error) {
+func GetGlobalLeaseEtcd() *LeaseEtcdClient {
+	return leaseEtcdInstance
+}
+func InitGlobalLeaseEtcd() (*LeaseEtcdClient, error) {
 	var err error
 	once.Do(func() {
 		leaseEtcdInstance, err = NewLeaseEtcdClient()

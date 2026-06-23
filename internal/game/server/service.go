@@ -44,12 +44,8 @@ func NewGameService() (*GameService, error) {
 		clog.Error("create game service failed")
 		return nil, err
 	}
-	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
-	if err != nil {
-		clog.Error("game service init etcd failed", zap.Error(err))
-		cancel()
-		return nil, err
-	}
+	etcdCli := etcdx.GetGlobalLeaseEtcd()
+
 	gameCfg := config.GetGameServerCfg()
 
 	svc := &GameService{

@@ -43,7 +43,7 @@ func main() {
 	//grpcAddr := fmt.Sprintf(":%s", gPort)
 	gateAddr, grpcAddr := getAddress()
 	clog.Info("grpc addr", zap.String("gateAddr", gateAddr), zap.String("grpcAddr", grpcAddr))
-	etcdCli, err := etcdx.GetGlobalLeaseEtcd()
+	etcdCli, err := etcdx.InitGlobalLeaseEtcd()
 	if err != nil {
 		clog.Error("init etcd failed", zap.Error(err))
 		return
