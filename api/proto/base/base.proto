@@ -25,7 +25,7 @@ enum FirstKind{
 enum ErrCode {
   EC_OK = 0;
   EC_ERROR = 10001;
-
+  EC_BUSY = 10002;
 }
 // 顶层统一包裹帧
 message WsFrame {
@@ -37,13 +37,13 @@ message WsFrame {
   string err_msg = 6;    // 错误详情
   bytes payload = 7;        // 业务子消息序列化数据 对应请求时候 ReqBody, 返回时候RespBody
   int64 timestamp = 8;// 客户端原样ts
-  uint64 roomId = 9;//房间号
+  uint32 roomId = 9;//房间号
 }
 // 客户端请求体 (body填充)
 message ReqBody {
   uint32 cmd = 1;        // 业务指令:1进房 2发消息 3退房 在 业务中也用 枚举定义 比直接约定 1，2，3 这种要好
   uint64 uid = 2;
-  uint64 roomId = 3;// 房间号
+  uint32 roomId = 3;// 房间号
   bytes payload = 4;        // 业务参数结构体
 }
 

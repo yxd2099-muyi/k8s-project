@@ -1,8 +1,12 @@
 package common
 
 type ArgConfig struct {
-	IPString string
-	Port     string
+	IPString     string
+	PodName      string
+	Port         string
+	PodIndex     uint32
+	GRpcAddr     string
+	RegisterAddr string
 }
 
 var ArgConfigG *ArgConfig

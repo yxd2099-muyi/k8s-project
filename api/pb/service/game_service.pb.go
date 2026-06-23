@@ -138,9 +138,10 @@ const file_service_game_service_proto_rawDesc = "" +
 	"ForwardRsp\x12!\n" +
 	"\x04code\x18\x01 \x01(\x0e2\r.base.ErrCodeR\x04code\x12\x10\n" +
 	"\x03msg\x18\x02 \x01(\tR\x03msg\x12\"\n" +
-	"\x04body\x18\x03 \x01(\v2\x0e.base.RespBodyR\x04body2I\n" +
+	"\x04body\x18\x03 \x01(\v2\x0e.base.RespBodyR\x04body2\x8b\x01\n" +
 	"\tGameLogic\x12<\n" +
-	"\x10ForwardClientMsg\x12\x13.service.ForwardReq\x1a\x13.service.ForwardRspB;Z9github.com/k8s/muyi/k8s-project/api/pb/service;pb_serviceb\x06proto3"
+	"\x10ForwardClientMsg\x12\x13.service.ForwardReq\x1a\x13.service.ForwardRsp\x12@\n" +
+	"\x14ForwardClientRoomMsg\x12\x13.service.ForwardReq\x1a\x13.service.ForwardRspB;Z9github.com/k8s/muyi/k8s-project/api/pb/service;pb_serviceb\x06proto3"
 
 var (
 	file_service_game_service_proto_rawDescOnce sync.Once
@@ -167,9 +168,11 @@ var file_service_game_service_proto_depIdxs = []int32{
 	3, // 1: service.ForwardRsp.code:type_name -> base.ErrCode
 	4, // 2: service.ForwardRsp.body:type_name -> base.RespBody
 	0, // 3: service.GameLogic.ForwardClientMsg:input_type -> service.ForwardReq
-	1, // 4: service.GameLogic.ForwardClientMsg:output_type -> service.ForwardRsp
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
+	0, // 4: service.GameLogic.ForwardClientRoomMsg:input_type -> service.ForwardReq
+	1, // 5: service.GameLogic.ForwardClientMsg:output_type -> service.ForwardRsp
+	1, // 6: service.GameLogic.ForwardClientRoomMsg:output_type -> service.ForwardRsp
+	5, // [5:7] is the sub-list for method output_type
+	3, // [3:5] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
 	3, // [3:3] is the sub-list for extension extendee
 	0, // [0:3] is the sub-list for field type_name

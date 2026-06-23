@@ -140,6 +140,7 @@ type ErrCode int32
 const (
 	ErrCode_EC_OK    ErrCode = 0
 	ErrCode_EC_ERROR ErrCode = 10001
+	ErrCode_EC_BUSY  ErrCode = 10002
 )
 
 // Enum value maps for ErrCode.
@@ -147,10 +148,12 @@ var (
 	ErrCode_name = map[int32]string{
 		0:     "EC_OK",
 		10001: "EC_ERROR",
+		10002: "EC_BUSY",
 	}
 	ErrCode_value = map[string]int32{
 		"EC_OK":    0,
 		"EC_ERROR": 10001,
+		"EC_BUSY":  10002,
 	}
 )
 
@@ -192,7 +195,7 @@ type WsFrame struct {
 	ErrMsg        string                 `protobuf:"bytes,6,opt,name=err_msg,json=errMsg,proto3" json:"err_msg,omitempty"`                               // 错误详情
 	Payload       []byte                 `protobuf:"bytes,7,opt,name=payload,proto3" json:"payload,omitempty"`                                           // 业务子消息序列化数据 对应请求时候 ReqBody, 返回时候RespBody
 	Timestamp     int64                  `protobuf:"varint,8,opt,name=timestamp,proto3" json:"timestamp,omitempty"`                                      // 客户端原样ts
-	RoomId        uint64                 `protobuf:"varint,9,opt,name=roomId,proto3" json:"roomId,omitempty"`                                            //房间号
+	RoomId        uint32                 `protobuf:"varint,9,opt,name=roomId,proto3" json:"roomId,omitempty"`                                            //房间号
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -283,7 +286,7 @@ func (x *WsFrame) GetTimestamp() int64 {
 	return 0
 }
 
-func (x *WsFrame) GetRoomId() uint64 {
+func (x *WsFrame) GetRoomId() uint32 {
 	if x != nil {
 		return x.RoomId
 	}
@@ -295,7 +298,7 @@ type ReqBody struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Cmd           uint32                 `protobuf:"varint,1,opt,name=cmd,proto3" json:"cmd,omitempty"` // 业务指令:1进房 2发消息 3退房 在 业务中也用 枚举定义 比直接约定 1，2，3 这种要好
 	Uid           uint64                 `protobuf:"varint,2,opt,name=uid,proto3" json:"uid,omitempty"`
-	RoomId        uint64                 `protobuf:"varint,3,opt,name=roomId,proto3" json:"roomId,omitempty"`  // 房间号
+	RoomId        uint32                 `protobuf:"varint,3,opt,name=roomId,proto3" json:"roomId,omitempty"`  // 房间号
 	Payload       []byte                 `protobuf:"bytes,4,opt,name=payload,proto3" json:"payload,omitempty"` // 业务参数结构体
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -345,7 +348,7 @@ func (x *ReqBody) GetUid() uint64 {
 	return 0
 }
 
-func (x *ReqBody) GetRoomId() uint64 {
+func (x *ReqBody) GetRoomId() uint32 {
 	if x != nil {
 		return x.RoomId
 	}
@@ -473,11 +476,11 @@ const file_base_base_proto_rawDesc = "" +
 	"\aerr_msg\x18\x06 \x01(\tR\x06errMsg\x12\x18\n" +
 	"\apayload\x18\a \x01(\fR\apayload\x12\x1c\n" +
 	"\ttimestamp\x18\b \x01(\x03R\ttimestamp\x12\x16\n" +
-	"\x06roomId\x18\t \x01(\x04R\x06roomId\"_\n" +
+	"\x06roomId\x18\t \x01(\rR\x06roomId\"_\n" +
 	"\aReqBody\x12\x10\n" +
 	"\x03cmd\x18\x01 \x01(\rR\x03cmd\x12\x10\n" +
 	"\x03uid\x18\x02 \x01(\x04R\x03uid\x12\x16\n" +
-	"\x06roomId\x18\x03 \x01(\x04R\x06roomId\x12\x18\n" +
+	"\x06roomId\x18\x03 \x01(\rR\x06roomId\x12\x18\n" +
 	"\apayload\x18\x04 \x01(\fR\apayload\"$\n" +
 	"\bRespBody\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\"6\n" +
@@ -496,10 +499,11 @@ const file_base_base_proto_rawDesc = "" +
 	"FIRST_ROOM\x10\x01\x12\x0f\n" +
 	"\vFIRST_GUILD\x10\x02\x12\x0e\n" +
 	"\n" +
-	"FIRST_PUSH\x10\x03*#\n" +
+	"FIRST_PUSH\x10\x03*1\n" +
 	"\aErrCode\x12\t\n" +
 	"\x05EC_OK\x10\x00\x12\r\n" +
-	"\bEC_ERROR\x10\x91NB)Z'github.com/k8s/muyi/api/pb/base;pb_baseb\x06proto3"
+	"\bEC_ERROR\x10\x91N\x12\f\n" +
+	"\aEC_BUSY\x10\x92NB)Z'github.com/k8s/muyi/api/pb/base;pb_baseb\x06proto3"
 
 var (
 	file_base_base_proto_rawDescOnce sync.Once

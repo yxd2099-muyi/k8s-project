@@ -19,7 +19,8 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	GameLogic_ForwardClientMsg_FullMethodName = "/service.GameLogic/ForwardClientMsg"
+	GameLogic_ForwardClientMsg_FullMethodName     = "/service.GameLogic/ForwardClientMsg"
+	GameLogic_ForwardClientRoomMsg_FullMethodName = "/service.GameLogic/ForwardClientRoomMsg"
 )
 
 // GameLogicClient is the client API for GameLogic service.
@@ -28,7 +29,10 @@ const (
 //
 // Game 提供给 Gate 的转发服务
 type GameLogicClient interface {
+	// 普通消息转发
 	ForwardClientMsg(ctx context.Context, in *ForwardReq, opts ...grpc.CallOption) (*ForwardRsp, error)
+	// 房间消息转发
+	ForwardClientRoomMsg(ctx context.Context, in *ForwardReq, opts ...grpc.CallOption) (*ForwardRsp, error)
 }
 
 type gameLogicClient struct {
@@ -49,13 +53,26 @@ func (c *gameLogicClient) ForwardClientMsg(ctx context.Context, in *ForwardReq, 
 	return out, nil
 }
 
+func (c *gameLogicClient) ForwardClientRoomMsg(ctx context.Context, in *ForwardReq, opts ...grpc.CallOption) (*ForwardRsp, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ForwardRsp)
+	err := c.cc.Invoke(ctx, GameLogic_ForwardClientRoomMsg_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GameLogicServer is the server API for GameLogic service.
 // All implementations must embed UnimplementedGameLogicServer
 // for forward compatibility.
 //
 // Game 提供给 Gate 的转发服务
 type GameLogicServer interface {
+	// 普通消息转发
 	ForwardClientMsg(context.Context, *ForwardReq) (*ForwardRsp, error)
+	// 房间消息转发
+	ForwardClientRoomMsg(context.Context, *ForwardReq) (*ForwardRsp, error)
 	mustEmbedUnimplementedGameLogicServer()
 }
 
@@ -68,6 +85,9 @@ type UnimplementedGameLogicServer struct{}
 
 func (UnimplementedGameLogicServer) ForwardClientMsg(context.Context, *ForwardReq) (*ForwardRsp, error) {
 	return nil, status.Error(codes.Unimplemented, "method ForwardClientMsg not implemented")
+}
+func (UnimplementedGameLogicServer) ForwardClientRoomMsg(context.Context, *ForwardReq) (*ForwardRsp, error) {
+	return nil, status.Error(codes.Unimplemented, "method ForwardClientRoomMsg not implemented")
 }
 func (UnimplementedGameLogicServer) mustEmbedUnimplementedGameLogicServer() {}
 func (UnimplementedGameLogicServer) testEmbeddedByValue()                   {}
@@ -108,6 +128,24 @@ func _GameLogic_ForwardClientMsg_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GameLogic_ForwardClientRoomMsg_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ForwardReq)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GameLogicServer).ForwardClientRoomMsg(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GameLogic_ForwardClientRoomMsg_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GameLogicServer).ForwardClientRoomMsg(ctx, req.(*ForwardReq))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GameLogic_ServiceDesc is the grpc.ServiceDesc for GameLogic service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -118,6 +156,10 @@ var GameLogic_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ForwardClientMsg",
 			Handler:    _GameLogic_ForwardClientMsg_Handler,
+		},
+		{
+			MethodName: "ForwardClientRoomMsg",
+			Handler:    _GameLogic_ForwardClientRoomMsg_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -1,7 +1,7 @@
 [serverinfo] # 总的服务信息
-projectName = "racer" # 项目名称
+projectName = "k8s-project" # 项目名称
 serverId = "1001" # 分区分服务id
-env ="outer" # 环境 dev(开发,测试环境)outer(外网访问测试环境) prod（生产环境）
+env ="dev" # 环境 dev(开发,测试环境)outer(外网访问测试环境) prod（生产环境）
 jwtSecret = "79mdVksy_gpIDkYLrnWgoxRtTLMUHdny-TBiuF83WC0=" # jwt 密钥
 port = 9000 # 当前服务的端口号，k8s 中同一种服务这些端口号一样 web 8088 gate 8090 game 9000
 
@@ -42,7 +42,7 @@ endpoints = [
     "http://127.0.0.1:2379",
 ]
 dialTimeout =10 #连接超时(秒)
-ttl=15 #租约时间(秒)
+ttl=120 #租约时间(秒)
 keepAliveInterval=5 #续约间隔(秒)
 username  ="" #用户名
 password  ="" #密码

@@ -1,67 +1,70 @@
 package room
 
 import (
-	pb_base "github.com/k8s/muyi/api/pb/base"
 	"sync"
-	"sync/atomic"
+
+	"github.com/k8s/muyi/shared/infra/logger"
+	"go.uber.org/zap"
 )
 
-type Room struct {
-	roomId uint64
-	uids   map[uint64]bool
-	mu     sync.RWMutex
-}
-
 type RoomMgr struct {
-	mu       sync.RWMutex
-	rooms    map[uint64]*Room
-	maxNum   int
-	count    atomic.Int32
-	shutdown atomic.Bool
+	rooms    sync.Map // key:uint32 roomId, value:*Room
+	log      *zap.Logger
+	closeSig chan struct{}
+	wg       sync.WaitGroup
 }
 
-func NewRoomMgr(maxRoom int) *RoomMgr {
-	return &RoomMgr{
-		rooms:  make(map[uint64]*Room),
-		maxNum: maxRoom,
+func NewRoomMgr(pushWorkerNum int) *RoomMgr {
+	mgr := &RoomMgr{
+		log:      logger.L.Named("room_mgr"),
+		closeSig: make(chan struct{}),
 	}
+	return mgr
 }
 
-// CreateRoom 创建房间
-func (m *RoomMgr) CreateRoom(roomId uint64) pb_base.ErrCode {
-	//if m.shutdown.Load() {
-	//	return pb_base.ErrCode_EC_ERROR
-	//}
-	//m.mu.Lock()
-	//defer m.mu.Unlock()
-	//if int(m.count.Load()) >= m.maxNum {
-	//	return pb_base.ErrCode_EC_ROOM_FULL
-	//}
-	//if _, ok := m.rooms[roomId]; ok {
-	//	return pb_base.ErrCode_EC_OK
-	//}
-	//m.rooms[roomId] = &Room{
-	//	roomId: roomId,
-	//	uids:   make(map[uint64]bool),
-	//}
-	//m.count.Add(1)
-	return pb_base.ErrCode_EC_OK
+// GetOrCreateRoom 获取房间，不存在则新建
+func (m *RoomMgr) GetOrCreateRoom(roomId uint32) *Room {
+	val, ok := m.rooms.Load(roomId)
+	if ok {
+		return val.(*Room)
+	}
+	// 新建房间
+	newRoom := NewRoom(roomId)
+	m.rooms.Store(roomId, newRoom)
+	m.log.Info("create room success", zap.Uint32("roomId", roomId))
+	return newRoom
 }
 
-// GetRoom 获取房间
-func (m *RoomMgr) GetRoom(roomId uint64) (*Room, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	r, ok := m.rooms[roomId]
-	return r, ok
-}
-
-// Shutdown 清理房间
-func (m *RoomMgr) Shutdown() {
-	if m.shutdown.Swap(true) {
+// DelRoom 销毁房间
+func (m *RoomMgr) DelRoom(roomId uint32) {
+	val, ok := m.rooms.LoadAndDelete(roomId)
+	if !ok {
 		return
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.rooms = nil
+	room := val.(*Room)
+	room.Close()
+	m.log.Info("destroy room success", zap.Uint32("roomId", roomId))
+}
+
+// GetRoom 仅查询，不创建
+func (m *RoomMgr) GetRoom(roomId uint32) (*Room, bool) {
+	val, ok := m.rooms.Load(roomId)
+	if !ok {
+		return nil, false
+	}
+	return val.(*Room), true
+}
+
+// Close 全局优雅关闭所有房间、推送协程
+func (m *RoomMgr) Close() {
+	close(m.closeSig)
+	// 关闭推送
+	// 遍历销毁所有房间
+	m.rooms.Range(func(k, v any) bool {
+		room := v.(*Room)
+		room.Close()
+		m.rooms.Delete(k)
+		return true
+	})
+	m.log.Info("all room closed")
 }

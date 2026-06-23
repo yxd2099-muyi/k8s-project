@@ -17,4 +17,5 @@ const (
 const (
 	GamePodIP   = "POD_IP"
 	GamePodPort = "POD_PORT"
+	GamePodName = "POD_NAME"
 )

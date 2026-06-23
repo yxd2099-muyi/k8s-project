@@ -17,3 +17,8 @@ type GateNode struct {
 	WsAddr   string `json:"ws_addr"`
 	GrpcAddr string `json:"grpc_addr"` // game推送gate的grpc地址
 }
+
+type RoomMeta struct {
+	RoomId     uint32 `json:"room_Id"`     // roomId  room 的房间号
+	ServerAddr string `json:"server_addr"` // 房间所在的etcd
+}

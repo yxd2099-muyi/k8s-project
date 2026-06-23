@@ -19,8 +19,7 @@ type GameLogicServer struct {
 	pb_service.UnimplementedGameLogicServer
 	roomMgr   *room.RoomMgr
 	rangeCalc *k8s.RoomRangeCalc
-	//pushMgr   *push.PushManager
-	clog *zap.Logger
+	clog      *zap.Logger
 }
 
 func NewGameLogicServer(rm *room.RoomMgr, rc *k8s.RoomRangeCalc) *GameLogicServer {
@@ -85,5 +84,80 @@ func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.
 	resB.Payload = b
 	res.Body = resB
 	res.Msg = "success"
+	return res, nil
+}
+
+// ForwardClientRoomMsg 接收gate 转发 房间客户端请求
+func (s *GameLogicServer) ForwardClientRoomMsg(ctx context.Context, req *pb_service.ForwardReq) (*pb_service.ForwardRsp, error) {
+	defer func() {
+		if err := recover(); err != nil {
+			stack := string(debug.Stack())
+			s.clog.Error("ForwardClientMsg panic",
+				zap.Any("err", err),
+				zap.String("stack", stack),
+			)
+		}
+	}()
+
+	body := req.Req
+	roomId := body.RoomId
+	uid := body.Uid
+	cmd := pb_room.CmdRoomKind(body.Cmd)
+	payload := body.Payload
+
+	// 校验房间归属
+	if !s.rangeCalc.IsRoomBelong(roomId) {
+		return &pb_service.ForwardRsp{
+			Code: pb_base.ErrCode_EC_ERROR,
+			Msg:  "room not belong this pod",
+		}, nil
+	}
+
+	res := &pb_service.ForwardRsp{Code: pb_base.ErrCode_EC_OK}
+	rInfo, exist := common.GetRoomHandler(cmd)
+	if !exist {
+		res.Code = pb_base.ErrCode_EC_ERROR
+		res.Msg = "cmd not register"
+		return res, nil
+	}
+
+	// 构造请求上下文
+	tCtx := &common.TContext{
+		Logger: s.clog.With(
+			zap.Uint32("roomId", roomId),
+			zap.Uint64("uid", uid),
+			zap.Int32("cmd", int32(cmd)),
+		),
+		Uid:    uid,
+		RoomId: roomId,
+	}
+
+	// 获取房间
+	rm, ok := s.roomMgr.GetRoom(roomId)
+	if !ok {
+		res.Code = pb_base.ErrCode_EC_ERROR
+		res.Msg = "room not exist"
+		return res, nil
+	}
+
+	// 同步指令：直接阻塞执行，返回结果
+	if rInfo.IsSync {
+		b, err := rInfo.Handler(tCtx, payload)
+		if err != nil {
+			res.Code = pb_base.ErrCode_EC_ERROR
+			res.Msg = err.Error()
+			return res, nil
+		}
+		res.Body = &pb_base.RespBody{Payload: b}
+		return res, nil
+	}
+
+	// 异步指令：丢入房间队列，立刻返回成功
+	okSend := rm.SendMsg(tCtx, payload, rInfo)
+	if !okSend {
+		res.Code = pb_base.ErrCode_EC_BUSY
+		res.Msg = "room queue full"
+		return res, nil
+	}
 	return res, nil
 }

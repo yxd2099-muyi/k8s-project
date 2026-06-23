@@ -1,56 +1,51 @@
 package k8s
 
+import (
+	"github.com/k8s/muyi/api/model"
+	"github.com/k8s/muyi/internal/game/common"
+)
+
+// RoomRangeCalc 计算当前pod房间区间
 type RoomRangeCalc struct {
-	ns         string
-	svcName    string
-	maxRoom    int
-	podOrdinal int // 当前pod序号 statefulset game-0,game-1
-	totalPod   int // statefulset副本数
+	maxRoomCfg uint32
+	podIndex   uint32
+	RoomMin    uint32
+	RoomMax    uint32
+	PodName    string
+	PodIP      string
+	GrpcAddr   string
 }
 
-func NewRoomRangeCalc() (*RoomRangeCalc, error) {
-	// 获取当前pod hostname game-0
-	//host, _ := os.Hostname()
-	//ordinalStr := strings.Split(host, "-")[1]
-	//ordinal, _ := strconv.Atoi(ordinalStr)
-	//
-	//// 加载kubeconfig
-	//kubeconfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
-	//config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//clientset, err := kubernetes.NewForConfig(config)
-	//if err != nil {
-	//	return nil, err
-	//}
-	//sts, err := clientset.AppsV1().StatefulSets(namespace).Get(context.Background(), svcName, metav1.GetOptions{})
-	//if err != nil {
-	//	return nil, err
-	//}
-	//replicas := int(*sts.Spec.Replicas)
-	//
-	//return &RoomRangeCalc{
-	//	ns:         namespace,
-	//	svcName:    svcName,
-	//	maxRoom:    maxRoom,
-	//	podOrdinal: ordinal,
-	//	totalPod:   replicas,
-	//}, nil
-	return nil, nil
-}
-
-// GetCurrentPodRoomRange 返回当前pod负责的房间区间 [start, end]
-func (r *RoomRangeCalc) GetCurrentPodRoomRange() (uint64, uint64) {
-	perPod := uint64(r.maxRoom / r.totalPod)
-	start := uint64(r.podOrdinal) * perPod
-	end := start + perPod - 1
-	return start, end
+func NewRoomRangeCalc(maxRoomCfg uint32) (*RoomRangeCalc, error) {
+	r := &RoomRangeCalc{}
+	r.maxRoomCfg = maxRoomCfg
+	if maxRoomCfg == 0 {
+		r.maxRoomCfg = 200
+	}
+	argCfg := common.GetArgConfig()
+	r.PodIP = argCfg.IPString
+	r.PodName = argCfg.PodName
+	r.GrpcAddr = argCfg.RegisterAddr
+	idx := argCfg.PodIndex
+	r.podIndex = idx
+	r.RoomMin = idx*r.maxRoomCfg + 1
+	r.RoomMax = (idx + 1) * r.maxRoomCfg
+	return r, nil
 }
 
 // IsRoomBelong 判断roomId是否属于当前pod
-func (r *RoomRangeCalc) IsRoomBelong(roomId uint64) bool {
-	return true
-	//s, e := r.GetCurrentPodRoomRange()
-	//return roomId >= s && roomId <= e
+func (r *RoomRangeCalc) IsRoomBelong(roomId uint32) bool {
+	return roomId >= r.RoomMin && roomId <= r.RoomMax
+}
+
+// GetGameNode 输出注册etcd的节点信息
+func (r *RoomRangeCalc) GetGameNode() model.GameNode {
+	return model.GameNode{
+		PodName:    r.PodName,
+		PodIP:      r.PodIP,
+		GrpcAddr:   r.GrpcAddr,
+		RoomMin:    r.RoomMin,
+		RoomMax:    r.RoomMax,
+		MaxRoomCfg: r.maxRoomCfg,
+	}
 }

@@ -13,6 +13,7 @@ type TContext struct {
 	Address string
 	IPStr   string // ip 字符串形式
 	GID     uint64 // 所在公会id
+	RoomId  uint32
 }
 
 func (t *TContext) Reset() {

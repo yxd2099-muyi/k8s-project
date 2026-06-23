@@ -9,7 +9,10 @@ gameserver 提供服务
 
 // Game 提供给 Gate 的转发服务
 service GameLogic {
+  //普通消息转发
   rpc ForwardClientMsg(ForwardReq) returns (ForwardRsp);
+  // 房间消息转发
+  rpc ForwardClientRoomMsg(ForwardReq) returns (ForwardRsp);
 }
 
 message ForwardReq{

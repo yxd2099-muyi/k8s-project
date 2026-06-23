@@ -83,7 +83,7 @@ type Log struct {
 type Etcd struct {
 	Endpoints         []string `mapstructure:"endpoints"`
 	DialTimeout       int      `mapstructure:"dialTimeout"`
-	TTL               int      `mapstructure:"ttl"`
+	LeaseTTL          int      `mapstructure:"ttl"`
 	KeepAliveInterval int      `mapstructure:"keepAliveInterval"`
 	Username          string   `mapstructure:"username"`
 	Password          string   `mapstructure:"password"`
