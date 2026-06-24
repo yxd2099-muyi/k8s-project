@@ -9,7 +9,7 @@ import (
 
 func NewHandler() {
 	h := &Handler{}
-	common.RegisterRoomHandler(pb_room.CmdRoomKind_CMD_ROOM_CREATE, false, h.Create)
+	common.RegisterNormalHandler(pb_room.CmdRoomKind_CMD_ROOM_CREATE, false, h.Create)
 }
 
 type Handler struct {

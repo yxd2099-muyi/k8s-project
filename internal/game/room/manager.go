@@ -1,10 +1,10 @@
 package room
 
 import (
-	"sync"
-
+	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
+	"sync"
 )
 
 type RoomMgr struct {
@@ -23,7 +23,7 @@ func NewRoomMgr(pushWorkerNum int) *RoomMgr {
 }
 
 // GetOrCreateRoom 获取房间，不存在则新建
-func (m *RoomMgr) GetOrCreateRoom(roomId uint32) *Room {
+func (m *RoomMgr) GetOrCreateRoom(roomId uint32) common.IRoom {
 	val, ok := m.rooms.Load(roomId)
 	if ok {
 		return val.(*Room)
@@ -47,7 +47,7 @@ func (m *RoomMgr) DelRoom(roomId uint32) {
 }
 
 // GetRoom 仅查询，不创建
-func (m *RoomMgr) GetRoom(roomId uint32) (*Room, bool) {
+func (m *RoomMgr) GetRoom(roomId uint32) (common.IRoom, bool) {
 	val, ok := m.rooms.Load(roomId)
 	if !ok {
 		return nil, false

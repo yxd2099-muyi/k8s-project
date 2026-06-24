@@ -57,7 +57,7 @@ func (s *GameLogicServer) ForwardClientMsg(ctx context.Context, req *pb_service.
 	}
 	res := &pb_service.ForwardRsp{}
 	res.Code = pb_base.ErrCode_EC_OK
-	h, exist := common.GetRoomHandler(cmd)
+	h, exist := common.GetNormalHandler(cmd)
 	s.clog.Debug("ForwardClientMsg ", zap.Any("cmd", cmd))
 	if !exist {
 		res.Code = pb_base.ErrCode_EC_ERROR
@@ -131,19 +131,15 @@ func (s *GameLogicServer) ForwardClientRoomMsg(ctx context.Context, req *pb_serv
 		Uid:    uid,
 		RoomId: roomId,
 	}
-
-	// 获取房间
-	rm, ok := s.roomMgr.GetRoom(roomId)
-	if !ok {
-		res.Code = pb_base.ErrCode_EC_ERROR
-		res.Msg = "room not exist"
-		return res, nil
-	}
-
+	clog := tCtx.Logger
+	clog.Debug("ForwardClientRoomMsg ", zap.Any("cmd", cmd))
+	// 获取创建房间
+	rm := s.roomMgr.GetOrCreateRoom(roomId)
 	// 同步指令：直接阻塞执行，返回结果
 	if rInfo.IsSync {
-		b, err := rInfo.Handler(tCtx, payload)
+		b, err := rInfo.Handler(tCtx, payload, rm)
 		if err != nil {
+			clog.Error(err.Error())
 			res.Code = pb_base.ErrCode_EC_ERROR
 			res.Msg = err.Error()
 			return res, nil
@@ -155,9 +151,11 @@ func (s *GameLogicServer) ForwardClientRoomMsg(ctx context.Context, req *pb_serv
 	// 异步指令：丢入房间队列，立刻返回成功
 	okSend := rm.SendMsg(tCtx, payload, rInfo)
 	if !okSend {
+		clog.Warn("SendMsg fail room queue full")
 		res.Code = pb_base.ErrCode_EC_BUSY
 		res.Msg = "room queue full"
 		return res, nil
 	}
+	clog.Debug("ForwardClientRoomMsg ", zap.Any("cmd", cmd))
 	return res, nil
 }

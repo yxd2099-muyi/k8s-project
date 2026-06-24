@@ -111,7 +111,7 @@ func (s *GateService) watchRoomServerInfo() {
 // Start 启动WS服务 + GRPC推送服务
 func (s *GateService) Start() error {
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
-	
+
 	s.etcdCli = etcdCli
 	s.watchRoomServerInfo() // watch room 服务信息
 	// 1. 启动gate grpc服务（game调用推送）
@@ -238,8 +238,12 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 		cconst.GRpcContextFieldUID, kit.Uint64ToString(uid),
 	)
 	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid)
-
-	rsp, err := gameCli.ForwardClientMsg(ctx, forwardReq)
+	var rsp *pb_service.ForwardRsp
+	if roomId > 0 {
+		rsp, err = gameCli.ForwardClientRoomMsg(ctx, forwardReq)
+	} else {
+		rsp, err = gameCli.ForwardClientMsg(ctx, forwardReq)
+	}
 	if err != nil {
 		s.clog.Warn("forward client msg to game fail", zap.Uint64("uid", uid), zap.String("gameAddr", gameAddr), zap.Error(err))
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, err.Error())

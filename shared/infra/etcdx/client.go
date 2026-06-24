@@ -144,7 +144,7 @@ func (lec *LeaseEtcdClient) keepAliveLoop() {
 		select {
 		case <-lec.globalCtx.Done():
 			return
-		case resp, ok := <-lec.keepAliveChan:
+		case _, ok := <-lec.keepAliveChan:
 			if !ok {
 				lec.log.Warn("lease keep alive channel closed, start rebuild lease")
 				if err := lec.rebuildLeaseAndReloadRegKeys(); err != nil {
@@ -156,7 +156,7 @@ func (lec *LeaseEtcdClient) keepAliveLoop() {
 				continue
 			}
 			// 正常心跳回执，修复原日志打印错误
-			lec.log.Debug("lease heartbeat ok", zap.Int64("leaseID", int64(resp.ID)), zap.Int64("remainTTL", resp.TTL))
+			//lec.log.Debug("lease heartbeat ok", zap.Int64("leaseID", int64(resp.ID)), zap.Int64("remainTTL", resp.TTL))
 		}
 	}
 }
