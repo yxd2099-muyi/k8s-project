@@ -2,7 +2,6 @@ package config
 
 import (
 	"fmt"
-	"github.com/k8s/muyi/shared/infra/cconst"
 	"os"
 	"time"
 
@@ -36,6 +35,10 @@ type Conf struct {
 	Gate       Gate       `mapstructure:"gate"`
 	Game       Game       `mapstructure:"game"`
 	Web        Web        `mapstructure:"web"`
+}
+
+func GetConfig() Conf {
+	return GlobalConf
 }
 
 type ServerInfo struct {
@@ -160,8 +163,8 @@ func GetRedisCfg() Redis {
 }
 
 // GetPodInfo 读取k8s环境变量 POD_NAME POD_IP
-func GetPodInfo() (podName, podIP string) {
-	podName = os.Getenv(cconst.ENV_POD_NAME)
-	podIP = os.Getenv(cconst.ENV_POD_NAME)
-	return
-}
+//func GetPodInfo() (podName, podIP string) {
+//	podName = os.Getenv(cconst.ENV_POD_NAME)
+//	podIP = os.Getenv(cconst.ENV_POD_NAME)
+//	return
+//}
