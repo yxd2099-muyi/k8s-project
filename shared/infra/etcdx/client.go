@@ -27,6 +27,13 @@ var (
 	once              sync.Once
 )
 
+// EtcdServerInfo  服务信息
+type EtcdServerInfo struct {
+	Target string // target 存储前缀 也是service
+	Addr   string // 服务的地址 192.168.179.88:9090
+	Meta   any
+}
+
 // LeaseEtcdClient 带统一共享租约的etcd客户端
 // 适用场景：GameServer本机房间/服务注册，所有注册key共用一个租约自动清理
 type LeaseEtcdClient struct {
@@ -38,11 +45,13 @@ type LeaseEtcdClient struct {
 	leaseTTL      int64
 
 	// regCache：仅缓存当前进程主动Register注册的key，用于租约失效批量重注册
-	regCache     sync.Map
-	log          *zap.Logger
-	globalCtx    context.Context
-	globalCancel context.CancelFunc
-	wg           sync.WaitGroup
+	regCache               sync.Map //key :地址 value 存字符串地址， 或者就是一个json 字符串， 在上层处理完了
+	etcdGrpcServerManager  sync.Map // key :service  key manager 。 主要是给 grpc 使用， 用于内部可以直接解析出数据
+	etcdEndPointServerInfo sync.Map // key: key value: *EtcdServerInfo
+	log                    *zap.Logger
+	globalCtx              context.Context
+	globalCancel           context.CancelFunc
+	wg                     sync.WaitGroup
 }
 
 func GetGlobalLeaseEtcd() *LeaseEtcdClient {
@@ -102,6 +111,9 @@ func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
 
 	lec.log.Info("lease etcd client init success", zap.Int64("leaseTTL", leaseTTL))
 	return lec, nil
+}
+func (lec *LeaseEtcdClient) GetClient() *clientv3.Client {
+	return lec.client
 }
 
 // createLease 创建共享租约
@@ -182,7 +194,26 @@ func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
 		}
 		return true
 	})
-	return regErr
+	if regErr != nil {
+		return regErr
+	}
+	var endpointErr error
+	// 处理grpc endPoint
+	lec.etcdEndPointServerInfo.Range(func(k, v any) bool {
+		key := k.(string)
+		val, ok := v.(*EtcdServerInfo)
+		if !ok {
+			return true
+		}
+		ctx, cancel := context.WithTimeout(lec.globalCtx, OpTimeout)
+		defer cancel()
+		if err := lec.RegisterGrpcServerInfo(ctx, val); err != nil {
+			lec.log.Error("re-register key failed", zap.String("key", key), zap.Error(err))
+			endpointErr = err
+		}
+		return true
+	})
+	return endpointErr
 }
 
 // Register 注册KV，绑定共享租约，存入本地注册缓存
@@ -195,11 +226,13 @@ func (lec *LeaseEtcdClient) Register(ctx context.Context, key, value string) err
 	}
 	lec.regCache.Store(key, value)
 	lec.log.Debug("register key success", zap.String("key", key), zap.String("value", value))
+	//endpoints.NewManager(cli, serviceName)
 	return nil
 }
 
 // UnRegister 注销本机注册key，删除etcd节点并清理本地缓存
 func (lec *LeaseEtcdClient) UnRegister(ctx context.Context, key string) error {
+	//func (lec *LeaseEtcdClient) UnRegister(key string) error {
 	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
 	_, err := lec.client.Delete(ctx, key)

@@ -19,6 +19,7 @@ import (
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.etcd.io/etcd/api/v3/mvccpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/client/v3/naming/endpoints"
 	"go.uber.org/zap"
 	"google.golang.org/grpc/metadata"
 	"net"
@@ -106,6 +107,8 @@ func (s *GateService) watchRoomServerInfo() {
 	s.initRoomServerInfo(prefixKey)
 	s.clog.Debug("watchRoomServerInfo", zap.Any("prefixKey", prefixKey))
 	s.etcdCli.WatchPrefix(prefixKey, s.handleGameEtcdInfo)
+	//WatcherEndPointMgr todo
+	//s.etcdCli.WatcherEndPointMgr(prefixKey, s.handleGameEtcdInfoForGrpcEndPoint)
 }
 
 // Start 启动WS服务 + GRPC推送服务
@@ -322,7 +325,21 @@ func (s *GateService) getGameAddrByRoom(roomId uint32) (string, bool) {
 	//found = true
 	return targetAddr, found
 }
-
+func (s *GateService) handleGameEtcdInfoForGrpcEndPoint(address string, value any, opt endpoints.Operation) {
+	clog := s.clog
+	s.clog.Debug("handle game etcd info", zap.String("address", address), zap.Any("value", value), zap.Any("type", opt))
+	info, ok := value.(*model.GameNode)
+	if !ok {
+		clog.Error("handleGameEtcdInfoForGrpcEndPoint value not gameNode info", zap.Any("address", address), zap.Any("type", opt), zap.Any("value", value))
+		return
+	}
+	switch opt {
+	case endpoints.Add:
+		s.roomServerInfoMap.Store(address, &info)
+	case endpoints.Delete:
+		s.roomServerInfoMap.Delete(address)
+	}
+}
 func (s *GateService) handleGameEtcdInfo(key, value string, eType mvccpb.Event_EventType) {
 
 	var podInfo model.GameNode
