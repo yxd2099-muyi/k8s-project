@@ -14,6 +14,7 @@ import (
 	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/keepalive"
 	"net"
 	"os"
 	"sync"
@@ -104,11 +105,16 @@ func (s *GameService) registerPodInfo() error {
 	return nil
 }
 func (s *GameService) Start() error {
+	kaep := keepalive.EnforcementPolicy{
+		MinTime:             30 * time.Second, // 允许客户端最快每 10s 发一次 PING（默认 5min 很严格）
+		PermitWithoutStream: true,             // 允许无 RPC 时也发 PING（关键！如果客户端开了这个，这里必须也开）
+	}
 	s.grpcSrv = grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			common.ContextInterception(),
 			// 可以添加其他拦截器
 		),
+		grpc.KeepaliveEnforcementPolicy(kaep),
 	)
 	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc)
 	pb_service.RegisterGameLogicServer(s.grpcSrv, logicSrv)

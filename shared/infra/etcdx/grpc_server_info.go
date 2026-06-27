@@ -15,18 +15,10 @@ func (lec *LeaseEtcdClient) RegisterGrpcServerInfo(ctx context.Context, info *Et
 	}
 	clog := lec.log
 	target := info.Target
-	mgr, exist, err := lec.GetEndPointMgr(target)
+	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
 		clog.Error("get endpoint manager failed", zap.String("target", target), zap.Error(err))
 		return err
-	}
-	if !exist {
-		mgr, err = endpoints.NewManager(lec.client, target)
-		if err != nil {
-			clog.Error("create endpoint manager failed", zap.String("target", target), zap.Error(err))
-			return err
-		}
-		lec.etcdGrpcServerManager.Store(target, mgr)
 	}
 	addr := info.Addr
 	clog.Info("grpc server register success", zap.String("target", target), zap.String("addr", addr))
@@ -39,16 +31,27 @@ func (lec *LeaseEtcdClient) RegisterGrpcServerInfo(ctx context.Context, info *Et
 	lec.etcdEndPointServerInfo.Store(key, info)
 	return nil
 }
-func (lec *LeaseEtcdClient) GetEndPointMgr(target string) (endpoints.Manager, bool, error) {
+
+// GetEndPointMgr 如果没有创建
+func (lec *LeaseEtcdClient) GetEndPointMgr(target string) (endpoints.Manager, error) {
+	clog := lec.log
+	var mgr endpoints.Manager
+	var err error
 	v, ok := lec.etcdGrpcServerManager.Load(target)
 	if !ok {
-		return nil, false, nil
+		mgr, err = endpoints.NewManager(lec.client, target)
+		if err != nil {
+			clog.Error("create endpoint manager failed", zap.String("target", target), zap.Error(err))
+			return nil, err
+		}
+		lec.etcdGrpcServerManager.Store(target, mgr)
+	} else {
+		mgr, ok = v.(endpoints.Manager)
+		if !ok {
+			return nil, fmt.Errorf("grpc server manager store invalid")
+		}
 	}
-	mgr, ok := v.(endpoints.Manager)
-	if !ok {
-		return nil, false, fmt.Errorf("grpc server manager store invalid")
-	}
-	return mgr, true, nil
+	return mgr, nil
 }
 func (lec *LeaseEtcdClient) getEndPointKey(target, address string) string {
 	key := fmt.Sprintf("%s/%s", target, address)
@@ -60,37 +63,28 @@ func (lec *LeaseEtcdClient) UnRegisterGrpcServerInfo(target, address string) err
 	key := lec.getEndPointKey(target, address)
 	lec.etcdGrpcServerManager.Delete(target)
 	lec.etcdEndPointServerInfo.Delete(key)
-	mgr, exist, err := lec.GetEndPointMgr(target)
+	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
 		return err
-	}
-	if !exist {
-		return nil
 	}
 	err = mgr.DeleteEndpoint(ctx, key)
 	return err
 }
 func (lec *LeaseEtcdClient) GetGRpcPointEndList(ctx context.Context, target string) (e endpoints.Key2EndpointMap, err error) {
 
-	mgr, exist, err := lec.GetEndPointMgr(target)
+	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
 		return nil, err
-	}
-	if !exist {
-		return nil, nil
 	}
 	e, err = mgr.List(ctx)
 	return
 }
 func (lec *LeaseEtcdClient) WatcherEndPointMgr(target string, handler cconst.UpdateEtcdEndPointGrpcHandler) {
 	clog := lec.log
-	mgr, exist, err := lec.GetEndPointMgr(target)
+
+	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
 		clog.Error("get endpoint manager failed", zap.String("target", target), zap.Error(err))
-		return
-	}
-	if !exist {
-		clog.Info("endpoint manager not found", zap.String("target", target))
 		return
 	}
 

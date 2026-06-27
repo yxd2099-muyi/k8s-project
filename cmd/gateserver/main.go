@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/k8s/muyi/internal/gate"
 	"github.com/k8s/muyi/internal/gate/common"
+	//_ "github.com/k8s/muyi/shared/infra/balancerx"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/env"
@@ -21,6 +22,8 @@ import (
 )
 
 func main() {
+	os.Setenv("GRPC_GO_LOG_SEVERITY_LEVEL", "INFO")
+	os.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", "99")
 	err := config.Init()
 	if err != nil {
 		log.Fatalf("init config failed: %v", err)
@@ -49,6 +52,7 @@ func main() {
 		return
 	}
 	defer etcdCli.Close()
+	//balancerx.InitTargetDirectBalanceBuilder()
 	gateSvc := gate.NewGateService(cfg.Gate, gateAddr, grpcAddr)
 	err = gateSvc.Start()
 	if err != nil {

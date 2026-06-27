@@ -8,11 +8,11 @@ import (
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/gate/conn"
-	"github.com/k8s/muyi/internal/gate/grpc_client"
 	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/etcdx"
+	"github.com/k8s/muyi/shared/infra/grpcx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"github.com/k8s/muyi/shared/kit"
@@ -51,7 +51,6 @@ type GateService struct {
 	cfg      config.Gate
 	redisCli *rediscli.Client
 	hub      *conn.ConnManager
-	gamePool *grpc_client.GamePoolMgr
 	grpcSrv  *grpc.Server
 	httpSrv  *http.Server
 	gateAddr string
@@ -62,7 +61,11 @@ type GateService struct {
 	clog     *zap.Logger
 	//roomServerInfo    []*model.GameNode
 	roomServerInfoMap sync.Map // key: address,value : GameNode
-	etcdCli           *etcdx.LeaseEtcdClient
+
+	etcdCli *etcdx.LeaseEtcdClient
+
+	gClient         *grpcx.GrpcClient
+	gameLogicClient pb_service.GameLogicClient //pb_service.NewGameLogicClient(conn)
 }
 
 func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
@@ -71,7 +74,6 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 		cfg:      cfg,
 		redisCli: rediscli.GetClient(),
 		hub:      conn.NewConnMgr(),
-		gamePool: grpc_client.NewGamePoolMgr(cfg.GrpcPoolSize),
 		gateAddr: gateAddr,
 		grpcAddr: grpcAddr,
 		ctx:      ctx,
@@ -100,6 +102,34 @@ func (s *GateService) initRoomServerInfo(prefixKey string) {
 		s.roomServerInfoMap.Store(podInfo.GrpcAddr, &podInfo)
 	}
 }
+func (s *GateService) wathRoomServerInfoEndPoint() error {
+	// 初始化以下
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+	clog := s.clog
+	target := etcdx.GetEtcdRoomServerTarget()
+	e, err := s.etcdCli.GetGRpcPointEndList(ctx, target)
+	if err != nil {
+		s.clog.Error("watch room server info failed", zap.Error(err))
+		return err
+	}
+	for _, v := range e {
+		addr := v.Addr
+		meta := v.Metadata // 本质是个json 字符串
+		clog.Debug("watch room server info", zap.String("addr", addr), zap.Any("meta", meta))
+		var info model.GameNode
+		err = serializer.EncodeDecodeJson(meta, &info)
+		if err != nil {
+			clog.Error("watch room server info failed", zap.Error(err))
+			continue
+		}
+
+		clog.Info("watch room server info", zap.Any("info", info))
+		s.roomServerInfoMap.Store(addr, &info)
+	}
+	s.etcdCli.WatcherEndPointMgr(target, s.handleGameEtcdInfoForGrpcEndPoint)
+	return nil
+}
 
 // 在watch 之前应该先做
 func (s *GateService) watchRoomServerInfo() {
@@ -113,10 +143,33 @@ func (s *GateService) watchRoomServerInfo() {
 
 // Start 启动WS服务 + GRPC推送服务
 func (s *GateService) Start() error {
+	clog := s.clog
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
-
 	s.etcdCli = etcdCli
-	s.watchRoomServerInfo() // watch room 服务信息
+	//balancerx.InitTargetDirectBalanceBuilder()
+	//s.watchRoomServerInfo() // watch room 服务信息
+	err := s.wathRoomServerInfoEndPoint()
+	if err != nil {
+		clog.Error("watch room server info failed", zap.Error(err))
+		return err
+	}
+	// grpc ConnClient
+	gcfg := grpcx.DefaultClientConfig()
+	target := etcdx.GetEtcdRoomServerTarget()
+	gcfg.Target = cconst.GetGRpcEtcdClientTarget(target)
+	gcfg.LBPolicy = string(cconst.LBTargetDirect)
+	//gcfg.LBPolicy = "target_direct"
+	//gcfg.LBPolicy = string(cconst.LBRoundRobin)
+	//gcfg.LBPolicy = "round_robin"
+	gcli, err := grpcx.NewGrpcClient(gcfg, etcdCli.GetClient())
+	if err != nil {
+		clog.Error("watch room server info failed", zap.Error(err))
+		return err
+	}
+	s.gClient = gcli
+	//pb_service.NewGameLogicClient(conn)
+	clog.Info("watch room server info", zap.Any("gcli", gcli))
+	s.gameLogicClient = pb_service.NewGameLogicClient(gcli.Conn())
 	// 1. 启动gate grpc服务（game调用推送）
 	s.grpcSrv = grpc.NewServer()
 	pushSrv := grpc_server.NewGatePushServer(s.hub)
@@ -214,16 +267,16 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 		return
 	}
 
-	gameCli, err := s.gamePool.GetClient(gameAddr)
-	if err != nil {
-		s.clog.Warn("get game grpc client fail", zap.String("gameAddr", gameAddr), zap.Any("roomId", roomId), zap.Error(err))
-		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game server failed")
-		return
-	}
+	//gameCli, err := s.gamePool.GetClient(gameAddr)
+	//if err != nil {
+	//	s.clog.Warn("get game grpc client fail", zap.String("gameAddr", gameAddr), zap.Any("roomId", roomId), zap.Error(err))
+	//	s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "connect game server failed")
+	//	return
+	//}
 
 	reqBody := frame.GetPayload()
 	reqBodyPro := &pb_base.ReqBody{}
-	err = serializer.DecodeProto(reqBody, reqBodyPro)
+	err := serializer.DecodeProto(reqBody, reqBodyPro)
 	if err != nil {
 		s.clog.Error("decode client req body fail", zap.Uint64("uid", uid), zap.Error(err))
 		s.sendErrResp(frame, uid, pb_base.ErrCode_EC_ERROR, "request proto decode error")
@@ -239,9 +292,13 @@ func (s *GateService) handleWsFrame(frame *pb_base.WsFrame) {
 	defer cancel()
 	ctx = metadata.AppendToOutgoingContext(ctx,
 		cconst.GRpcContextFieldUID, kit.Uint64ToString(uid),
+		cconst.ContextFieldRouterTargetAddress, gameAddr,
 	)
 	ctx = context.WithValue(ctx, cconst.GRpcContextFieldUID, uid)
 	var rsp *pb_service.ForwardRsp
+	gameCli := s.gameLogicClient
+	clog := s.clog
+	clog.Debug("client req frame", zap.Uint64("uid", uid), zap.String("req", string(reqBody)), zap.Any("gameAddr", gameAddr))
 	if roomId > 0 {
 		rsp, err = gameCli.ForwardClientRoomMsg(ctx, forwardReq)
 	} else {
@@ -328,9 +385,16 @@ func (s *GateService) getGameAddrByRoom(roomId uint32) (string, bool) {
 func (s *GateService) handleGameEtcdInfoForGrpcEndPoint(address string, value any, opt endpoints.Operation) {
 	clog := s.clog
 	s.clog.Debug("handle game etcd info", zap.String("address", address), zap.Any("value", value), zap.Any("type", opt))
-	info, ok := value.(*model.GameNode)
-	if !ok {
-		clog.Error("handleGameEtcdInfoForGrpcEndPoint value not gameNode info", zap.Any("address", address), zap.Any("type", opt), zap.Any("value", value))
+	//info, ok := value.(*model.GameNode)
+	//if !ok {
+	//	clog.Error("handleGameEtcdInfoForGrpcEndPoint value not gameNode info", zap.Any("address", address), zap.Any("type", opt), zap.Any("value", value))
+	//	return
+	//}
+	clog.Debug("handleGameEtcdInfoForGrpcEndPoint", zap.String("addr", address), zap.Any("meta", value))
+	var info model.GameNode
+	err := serializer.EncodeDecodeJson(value, &info)
+	if err != nil {
+		clog.Error("handleGameEtcdInfoForGrpcEndPoint", zap.Error(err))
 		return
 	}
 	switch opt {
@@ -383,10 +447,8 @@ func (s *GateService) Shutdown(ctx context.Context) error {
 	s.hub.Shutdown()
 	s.clog.Info("Shutdown step4: all client ws connections closed")
 
-	// 步骤5：关闭Game服务GRPC连接池
-	s.gamePool.Shutdown()
 	s.clog.Info("Shutdown step5: game grpc client pool shutdown complete")
-
+	s.gClient.Close()
 	// 步骤6：设置超时等待所有wg协程退出，解决永久阻塞卡死
 	waitDone := make(chan struct{}, 1)
 	go func() {

@@ -1,5 +1,7 @@
 package cconst
 
+import "fmt"
+
 //// GetRoomInfoEtcdPrefixKey 获取房间对应 key 的前缀
 //// projectName 项目名称  比如这个为k8s-project
 //// env 环境 eg: dev,prod,k8s
@@ -15,3 +17,14 @@ package cconst
 //func GetRoomInfoEtcdKey(prefix, podAddress string) string {
 //	return fmt.Sprintf("%s%s", prefix, podAddress)
 //}
+
+//const EtcdGRpcPrefix = "etcd://"
+
+const EtcdGRpcPrefix = "etcd:///"
+
+// GetGrpcEtcdClientTarget
+// target 也就是service 必须是/ 开头  /dev/game
+func GetGRpcEtcdClientTarget(target string) string {
+	target = fmt.Sprintf("%s%s", EtcdGRpcPrefix, target)
+	return target
+}
