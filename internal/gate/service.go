@@ -382,14 +382,9 @@ func (s *GateService) getGameAddrByRoom(roomId uint32) (string, bool) {
 	//found = true
 	return targetAddr, found
 }
-func (s *GateService) handleGameEtcdInfoForGrpcEndPoint(address string, value any, opt endpoints.Operation) {
+func (s *GateService) handleGameEtcdInfoForGrpcEndPoint(key, address string, value any, opt endpoints.Operation) {
 	clog := s.clog
-	s.clog.Debug("handle game etcd info", zap.String("address", address), zap.Any("value", value), zap.Any("type", opt))
-	//info, ok := value.(*model.GameNode)
-	//if !ok {
-	//	clog.Error("handleGameEtcdInfoForGrpcEndPoint value not gameNode info", zap.Any("address", address), zap.Any("type", opt), zap.Any("value", value))
-	//	return
-	//}
+	s.clog.Debug("handle game etcd info", zap.String("key", key), zap.String("address", address), zap.Any("value", value), zap.Any("type", opt))
 	clog.Debug("handleGameEtcdInfoForGrpcEndPoint", zap.String("addr", address), zap.Any("meta", value))
 	var info model.GameNode
 	err := serializer.EncodeDecodeJson(value, &info)
@@ -401,9 +396,12 @@ func (s *GateService) handleGameEtcdInfoForGrpcEndPoint(address string, value an
 	case endpoints.Add:
 		s.roomServerInfoMap.Store(address, &info)
 	case endpoints.Delete:
-		s.roomServerInfoMap.Delete(address)
+		addr := kit.ExtractAddrFromEtcdKey(key)
+		clog.Info("handle game etcd info", zap.String("key", key), zap.String("addr", addr))
+		s.roomServerInfoMap.Delete(addr)
 	}
 }
+
 func (s *GateService) handleGameEtcdInfo(key, value string, eType mvccpb.Event_EventType) {
 
 	var podInfo model.GameNode

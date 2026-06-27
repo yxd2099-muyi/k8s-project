@@ -114,7 +114,9 @@ func (lec *LeaseEtcdClient) WatcherEndPointMgr(target string, handler cconst.Upd
 					ep := u.Endpoint
 					address := ep.Addr
 					meta := ep.Metadata
-					handler(address, meta, u.Op)
+					key := u.Key
+					clog.Info("grpc server register success", zap.String("key", key), zap.String("address", address))
+					handler(key, address, meta, u.Op)
 				}
 			}
 		}

@@ -7,4 +7,4 @@ import (
 
 type UpdateEtcdHandler func(key, value string, eType mvccpb.Event_EventType)
 
-type UpdateEtcdEndPointGrpcHandler func(key string, value any, eType endpoints.Operation)
+type UpdateEtcdEndPointGrpcHandler func(key, address string, value any, eType endpoints.Operation)
