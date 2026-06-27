@@ -8,7 +8,6 @@ import (
 	"github.com/k8s/muyi/shared/infra/balancerx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
-	"os"
 	"sync"
 	"time"
 
@@ -64,15 +63,11 @@ type GrpcClient struct {
 // NewGrpcClient 创建gRPC客户端
 // etcdClient 由外部调用方管理生命周期，本方法不会关闭etcdClient
 func NewGrpcClient(cfg ClientConfig, etcdClient *clientv3.Client) (*GrpcClient, error) {
-	os.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", "99")
-	os.Setenv("GRPC_GO_LOG_SEVERITY_LEVEL", "INFO")
-	//balancerx.InitTargetDirectBalanceBuilder()
 	balancerx.RegisterTargetBalanceBuilder()
 	if etcdClient == nil {
 		return nil, errors.New("etcd client must not be nil")
 	}
 	clog := logger.L
-	//balancerx.InitTargetDirectBalanceBuilder()
 	// 强制校验target必须携带etcd scheme
 	const schemePrefix = "etcd:///"
 	if len(cfg.Target) < len(schemePrefix) || cfg.Target[:len(schemePrefix)] != schemePrefix {
@@ -96,10 +91,7 @@ func NewGrpcClient(cfg ClientConfig, etcdClient *clientv3.Client) (*GrpcClient, 
 	svcConfigJSON := string(svcConfigBytes)
 	clog.Info("client config", zap.Any("cfg", cfg))
 	clog.Info("service config", zap.String("service_config", svcConfigJSON))
-	//if cfg.LBPolicy == string(cconst.LBTargetDirect) {
-	//	balancerx.InitTargetDirectBalanceBuilder()
-	//}
-	// 2. 构建etcd resolver builder
+
 	etcdResolverBuilder, err := resolver.NewBuilder(etcdClient)
 	if err != nil {
 		return nil, fmt.Errorf("create etcd resolver builder: %w", err)
