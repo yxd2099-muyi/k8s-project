@@ -12,14 +12,6 @@ import (
 	"google.golang.org/grpc/resolver"
 )
 
-// 注册入口
-//
-//	func init() {
-//		builder := &TargetBalancerBuilder{}
-//		balancer.Register(builder)
-//		logger.L.Info("register target_direct balancer done",
-//			zap.String("lbName", builder.Name()))
-//	}
 func RegisterTargetBalanceBuilder() {
 	builder := &TargetBalancerBuilder{}
 	balancer.Register(builder)
