@@ -35,6 +35,7 @@ type Conf struct {
 	Gate       Gate       `mapstructure:"gate"`
 	Game       Game       `mapstructure:"game"`
 	Web        Web        `mapstructure:"web"`
+	Push       Push       `mapstructure:"push"`
 }
 
 func GetConfig() Conf {

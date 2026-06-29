@@ -11,3 +11,7 @@ const (
 	ServerTypeRoom        = "room"
 	ServerTypeRoomSubGRpc = "grpc"
 )
+const (
+	ServerTypePush        = "push"
+	ServerTypePushSubGRpc = "grpc"
+)

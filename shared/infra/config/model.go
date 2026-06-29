@@ -16,3 +16,6 @@ type Game struct {
 	Port       string `mapstructure:"port"`
 	MaxRoomNum int    `mapstructure:"max_room_num"`
 }
+type Push struct {
+	Port string `mapstructure:"port"`
+}

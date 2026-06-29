@@ -1,0 +1,58 @@
+syntax = "proto3";
+option go_package = "github.com/k8s/muyi/k8s-project/api/pb/service;pb_service";
+package service;
+
+// 推送服务
+service PushService {
+  // GameServer → PushServer：客户端流（支持批量）
+  rpc SendPushEvents(stream PushEvent) returns (PushResponse);
+
+  // PushServer ↔ GateServer：双向流
+  rpc PushStream(stream GateToPush) returns (stream PushToGate);
+}
+message PushEvent {
+  string event_id = 1;                    // 事件唯一ID
+  uint64 send_uid = 2;//发送者uid
+  repeated uint64 uids = 3;// 要发送给多个用户， 也可以一个
+  bytes payload = 4;//发送内容
+  int64 expire_at = 5; // 过期时间（秒）
+  int64 timestamp = 6;// 发送时间 （秒）
+}
+
+
+message PushResponse {
+  string event_id = 1;
+  bool success = 2;
+  string msg = 3;
+}
+
+// Gate → Push（上报）
+message GateToPush {
+  oneof payload {
+    Online online = 1;
+    Offline offline = 2;
+    Ack ack = 3;
+  }
+}
+
+message Online {
+  uint64 user_id = 1;
+  string gate_address = 2;
+}
+message Offline {
+  uint64 user_id = 1;
+  string reason = 2;
+}
+message Ack {
+  string event_id = 1;
+  uint64 user_id = 2;
+}
+
+// Push → Gate（下发，支持批量）
+message PushToGate {
+  string event_id = 1;
+  repeated uint64 uids = 2;   // 支持批量下发
+  string msg_type = 3;
+  bytes payload = 4;
+}
+
