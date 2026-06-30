@@ -218,6 +218,18 @@ func (m *ConnManager) BatchPushSync(uids []uint64, data []byte) {
 		}
 	}
 }
+func (m *ConnManager) AllUids() []uint64 {
+	res := make([]uint64, 0)
+	m.conns.Range(func(key, value interface{}) bool {
+		uid, ok := key.(uint64)
+		if !ok {
+			return true
+		}
+		res = append(res, uid)
+		return true
+	})
+	return res
+}
 
 // BroadcastAll 全服广播所有在线用户
 func (m *ConnManager) BroadcastAll(data []byte) {

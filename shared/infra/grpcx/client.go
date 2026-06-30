@@ -7,32 +7,55 @@ import (
 	"fmt"
 	"github.com/k8s/muyi/shared/infra/balancerx"
 	"github.com/k8s/muyi/shared/infra/logger"
+	"go.etcd.io/etcd/client/v3/naming/resolver"
 	"go.uber.org/zap"
 	"sync"
 	"time"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/client/v3/naming/resolver"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/keepalive"
 )
 
+type TargetType string
+
+const (
+	TargetTypeEtcd        TargetType = "etcd"
+	TargetTypePassthrough TargetType = "passthrough"
+)
+const (
+	PrefixEtcd        = "etcd:///"
+	PrefixPassthrough = "passthrough:///"
+)
+
+func GetTarget(targetType TargetType, target string) string {
+	switch targetType {
+	case TargetTypeEtcd:
+		return fmt.Sprintf("%s%s", PrefixEtcd, target)
+	case TargetTypePassthrough:
+		return fmt.Sprintf("%s%s", PrefixPassthrough, target)
+	}
+	return ""
+}
+
 // ClientConfig gRPC客户端配置
 type ClientConfig struct {
-	Target           string        // 完整地址：etcd:///service-prefix
+	//Target           string        // 完整地址：etcd:///service-prefix
+	Target           string        // 完整地址 service-prefix
 	LBPolicy         string        // 负载均衡策略: round_robin / consistent_hash
 	Timeout          time.Duration // 建立连接超时上下文
 	KeepaliveTime    time.Duration // TCP保活心跳间隔
 	KeepaliveTimeout time.Duration // 心跳超时判定断开
 	WaitForReady     bool          // RPC调用是否等待节点就绪，不快速失败
+	TargetType       TargetType    // 类型 如果是直连此次target 是address 127.0.0.1:8081
 }
 
 // DefaultClientConfig 默认配置
 func DefaultClientConfig() ClientConfig {
 	return ClientConfig{
-		Target:           "etcd:///my-service",
+		//Target:           "etcd:///my-service",
 		LBPolicy:         "round_robin",
 		Timeout:          10 * time.Second,
 		KeepaliveTime:    120 * time.Second,
@@ -67,62 +90,54 @@ func NewGrpcClient(cfg ClientConfig, etcdClient *clientv3.Client) (*GrpcClient, 
 	if etcdClient == nil {
 		return nil, errors.New("etcd client must not be nil")
 	}
-	clog := logger.L
-	// 强制校验target必须携带etcd scheme
-	const schemePrefix = "etcd:///"
-	if len(cfg.Target) < len(schemePrefix) || cfg.Target[:len(schemePrefix)] != schemePrefix {
-		return nil, fmt.Errorf("target must start with %s, got: %s", schemePrefix, cfg.Target)
-	}
-
-	// 1. 构建负载均衡服务配置（使用JSON序列化，杜绝语法错误）
-	svcCfg := serviceConfig{
-		WaitForReady: cfg.WaitForReady,
-		LoadBalancingConfig: []map[string]json.RawMessage{
-			{
-				cfg.LBPolicy: json.RawMessage("{}"),
-			},
-		},
-		FallbackPolicy: json.RawMessage(`{"fallbackBackoffMultiplier":1}`),
-	}
-	svcConfigBytes, err := json.Marshal(svcCfg)
-	if err != nil {
-		return nil, fmt.Errorf("marshal service config: %w", err)
-	}
-	svcConfigJSON := string(svcConfigBytes)
-	clog.Info("client config", zap.Any("cfg", cfg))
-	clog.Info("service config", zap.String("service_config", svcConfigJSON))
-
-	etcdResolverBuilder, err := resolver.NewBuilder(etcdClient)
+	etcdResolverBuilder, err := resolver.NewBuilder(etcdClient) //etcd服务发现解析器
 	if err != nil {
 		return nil, fmt.Errorf("create etcd resolver builder: %w", err)
 	}
-
 	connParams := grpc.ConnectParams{
 		MinConnectTimeout: 5 * time.Second, // 最小连接超时，确保 SubConn 主动连接
 	}
-	// 3. Dial参数
 	dialOpts := []grpc.DialOption{
-		// 注入etcd服务发现解析器
 		grpc.WithResolvers(etcdResolverBuilder),
-
-		// 全局服务配置：LB策略 + waitForReady
-		grpc.WithDefaultServiceConfig(svcConfigJSON),
-
 		// 内网非加密通信；公网生产替换为TLS证书凭证
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithConnectParams(connParams),
 		// TCP保活，防止空闲长连接被防火墙静默断开
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
 			Time:                cfg.KeepaliveTime,
 			Timeout:             cfg.KeepaliveTimeout,
 			PermitWithoutStream: true, // 无业务流也持续发送心跳包
 		}),
-		// ==========关键新增这一行==========
+		grpc.WithConnectParams(connParams),
 		grpc.WithDisableServiceConfig(),
 		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
 	}
+	clog := logger.L
+	clog.Debug("create grpc client", zap.Any("cfg", cfg))
+	passthrough := cfg.TargetType
+	if passthrough == TargetTypeEtcd {
 
-	conn, err := grpc.NewClient(cfg.Target, dialOpts...)
+		svcCfg := serviceConfig{
+			WaitForReady: cfg.WaitForReady,
+			LoadBalancingConfig: []map[string]json.RawMessage{
+				{
+					cfg.LBPolicy: json.RawMessage("{}"),
+				},
+			},
+			FallbackPolicy: json.RawMessage(`{"fallbackBackoffMultiplier":1}`),
+		}
+		svcConfigBytes, err := json.Marshal(svcCfg)
+		if err != nil {
+			return nil, fmt.Errorf("marshal service config: %w", err)
+		}
+		svcConfigJSON := string(svcConfigBytes)
+		clog.Info("client config", zap.Any("cfg", cfg))
+		clog.Info("service config", zap.String("service_config", svcConfigJSON))
+		dialOpts = append(dialOpts, grpc.WithDefaultServiceConfig(svcConfigJSON))
+	}
+
+	target := GetTarget(cfg.TargetType, cfg.Target)
+	clog.Info("target", zap.Any("target", target))
+	conn, err := grpc.NewClient(target, dialOpts...)
 	if err != nil {
 		clog.Error("new grpc client", zap.Error(err))
 		return nil, fmt.Errorf("grpc.NewClient failed: %w", err)
@@ -131,12 +146,89 @@ func NewGrpcClient(cfg ClientConfig, etcdClient *clientv3.Client) (*GrpcClient, 
 	conn.Connect()
 	gc := &GrpcClient{
 		conn: conn,
-		clog: logger.L,
+		clog: clog,
 	}
 	clog.Info("grpc client  eeeeeee")
 	go gc.watchConnState()
 	return gc, nil
 }
+
+//func NewGrpcClient(cfg ClientConfig, etcdClient *clientv3.Client) (*GrpcClient, error) {
+//
+//	balancerx.RegisterTargetBalanceBuilder()
+//	if etcdClient == nil {
+//		return nil, errors.New("etcd client must not be nil")
+//	}
+//	clog := logger.L
+//	// 强制校验target必须携带etcd scheme
+//	//const schemePrefix = "etcd:///"
+//	//if len(cfg.Target) < len(schemePrefix) || cfg.Target[:len(schemePrefix)] != schemePrefix {
+//	//	return nil, fmt.Errorf("target must start with %s, got: %s", schemePrefix, cfg.Target)
+//	//}
+//
+//	// 1. 构建负载均衡服务配置（使用JSON序列化，杜绝语法错误）
+//	svcCfg := serviceConfig{
+//		WaitForReady: cfg.WaitForReady,
+//		LoadBalancingConfig: []map[string]json.RawMessage{
+//			{
+//				cfg.LBPolicy: json.RawMessage("{}"),
+//			},
+//		},
+//		FallbackPolicy: json.RawMessage(`{"fallbackBackoffMultiplier":1}`),
+//	}
+//	svcConfigBytes, err := json.Marshal(svcCfg)
+//	if err != nil {
+//		return nil, fmt.Errorf("marshal service config: %w", err)
+//	}
+//	svcConfigJSON := string(svcConfigBytes)
+//	clog.Info("client config", zap.Any("cfg", cfg))
+//	clog.Info("service config", zap.String("service_config", svcConfigJSON))
+//
+//	etcdResolverBuilder, err := resolver.NewBuilder(etcdClient)
+//	if err != nil {
+//		return nil, fmt.Errorf("create etcd resolver builder: %w", err)
+//	}
+//
+//	connParams := grpc.ConnectParams{
+//		MinConnectTimeout: 5 * time.Second, // 最小连接超时，确保 SubConn 主动连接
+//	}
+//	// 3. Dial参数
+//	dialOpts := []grpc.DialOption{
+//		// 注入etcd服务发现解析器
+//		grpc.WithResolvers(etcdResolverBuilder),
+//
+//		// 全局服务配置：LB策略 + waitForReady
+//		grpc.WithDefaultServiceConfig(svcConfigJSON),
+//
+//		// 内网非加密通信；公网生产替换为TLS证书凭证
+//		grpc.WithTransportCredentials(insecure.NewCredentials()),
+//		grpc.WithConnectParams(connParams),
+//		// TCP保活，防止空闲长连接被防火墙静默断开
+//		grpc.WithKeepaliveParams(keepalive.ClientParameters{
+//			Time:                cfg.KeepaliveTime,
+//			Timeout:             cfg.KeepaliveTimeout,
+//			PermitWithoutStream: true, // 无业务流也持续发送心跳包
+//		}),
+//		// ==========关键新增这一行==========
+//		grpc.WithDisableServiceConfig(),
+//		grpc.WithDefaultCallOptions(grpc.WaitForReady(true)),
+//	}
+//	target := GetTarget(cfg.TargetType, cfg.Target)
+//	conn, err := grpc.NewClient(target, dialOpts...)
+//	if err != nil {
+//		clog.Error("new grpc client", zap.Error(err))
+//		return nil, fmt.Errorf("grpc.NewClient failed: %w", err)
+//	}
+//	// 强制激活连接，跳出IDLE，立刻执行服务发现+TCP握手
+//	conn.Connect()
+//	gc := &GrpcClient{
+//		conn: conn,
+//		clog: logger.L,
+//	}
+//	clog.Info("grpc client  eeeeeee")
+//	go gc.watchConnState()
+//	return gc, nil
+//}
 
 // watchConnState 监听连接状态变化，输出日志
 func (c *GrpcClient) watchConnState() {

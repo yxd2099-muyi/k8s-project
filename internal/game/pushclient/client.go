@@ -131,4 +131,5 @@ func (c *Client) Close() {
 	if c.conn != nil {
 		c.conn.Close()
 	}
+	c.clog.Info("[PushClient] close client successfully")
 }

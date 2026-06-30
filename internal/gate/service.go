@@ -7,6 +7,7 @@ import (
 	"github.com/k8s/muyi/api/model"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/gate/common"
 	"github.com/k8s/muyi/internal/gate/conn"
 	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"github.com/k8s/muyi/shared/infra/cconst"
@@ -39,43 +40,31 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-//	type GameNode struct {
-//		PodName    string `json:"pod_name"`
-//		PodIP      string `json:"pod_ip"`
-//		GrpcAddr   string `json:"grpc_addr"` // podIP:9000
-//		RoomMin    uint32 `json:"room_min"`
-//		RoomMax    uint32 `json:"room_max"`
-//		MaxRoomCfg uint32 `json:"max_room_cfg"`
-//	}
 type GateService struct {
-	cfg      config.Gate
-	redisCli *rediscli.Client
-	hub      *conn.ConnManager
-	grpcSrv  *grpc.Server
-	httpSrv  *http.Server
-	gateAddr string
-	grpcAddr string
-	wg       sync.WaitGroup
-	ctx      context.Context
-	cancel   context.CancelFunc
-	clog     *zap.Logger
-	//roomServerInfo    []*model.GameNode
+	cfg               config.Gate
+	redisCli          *rediscli.Client
+	hub               *conn.ConnManager
+	grpcSrv           *grpc.Server
+	httpSrv           *http.Server
+	wg                sync.WaitGroup
+	ctx               context.Context
+	cancel            context.CancelFunc
+	clog              *zap.Logger
 	roomServerInfoMap sync.Map // key: address,value : GameNode
 
 	etcdCli *etcdx.LeaseEtcdClient
 
 	gClient         *grpcx.GrpcClient
 	gameLogicClient pb_service.GameLogicClient //pb_service.NewGameLogicClient(conn)
+	pusServer       *grpc_server.PushServer
 }
 
-func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
+func NewGateService(cfg config.Gate) *GateService {
 	ctx, cancel := context.WithCancel(context.Background())
 	svc := &GateService{
 		cfg:      cfg,
 		redisCli: rediscli.GetClient(),
 		hub:      conn.NewConnMgr(),
-		gateAddr: gateAddr,
-		grpcAddr: grpcAddr,
 		ctx:      ctx,
 		cancel:   cancel,
 		clog:     logger.L,
@@ -84,24 +73,6 @@ func NewGateService(cfg config.Gate, gateAddr, grpcAddr string) *GateService {
 	return svc
 }
 
-func (s *GateService) initRoomServerInfo(prefixKey string) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-	m, err := s.etcdCli.PrefixGet(ctx, prefixKey)
-	if err != nil {
-		s.clog.Error("watch room server info failed", zap.Error(err))
-		return
-	}
-	for _, v := range m {
-		var podInfo model.GameNode
-		err = serializer.DecodeJsonForString(v, &podInfo)
-		if err != nil {
-			s.clog.Error("watch room server info failed", zap.Error(err))
-			continue
-		}
-		s.roomServerInfoMap.Store(podInfo.GrpcAddr, &podInfo)
-	}
-}
 func (s *GateService) wathRoomServerInfoEndPoint() error {
 	// 初始化以下
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
@@ -131,24 +102,14 @@ func (s *GateService) wathRoomServerInfoEndPoint() error {
 	return nil
 }
 
-// 在watch 之前应该先做
-func (s *GateService) watchRoomServerInfo() {
-	prefixKey := etcdx.GetEtcdRoomServerPrefixKey()
-	s.initRoomServerInfo(prefixKey)
-	s.clog.Debug("watchRoomServerInfo", zap.Any("prefixKey", prefixKey))
-	s.etcdCli.WatchPrefix(prefixKey, s.handleGameEtcdInfo)
-	//WatcherEndPointMgr todo
-	//s.etcdCli.WatcherEndPointMgr(prefixKey, s.handleGameEtcdInfoForGrpcEndPoint)
-}
-
 // Start 启动WS服务 + GRPC推送服务
 func (s *GateService) Start() error {
 	clog := s.clog
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
 	s.etcdCli = etcdCli
-	//balancerx.InitTargetDirectBalanceBuilder()
-	//s.watchRoomServerInfo() // watch room 服务信息
-	err := s.wathRoomServerInfoEndPoint()
+	pushS, err := grpc_server.NewPushServer(s.hub)
+	s.pusServer = pushS
+	err = s.wathRoomServerInfoEndPoint()
 	if err != nil {
 		clog.Error("watch room server info failed", zap.Error(err))
 		return err
@@ -156,7 +117,8 @@ func (s *GateService) Start() error {
 	// grpc ConnClient
 	gcfg := grpcx.DefaultClientConfig()
 	target := etcdx.GetEtcdRoomServerTarget()
-	gcfg.Target = cconst.GetGRpcEtcdClientTarget(target)
+	gcfg.Target = target
+	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBTargetDirect)
 	//gcfg.LBPolicy = "target_direct"
 	//gcfg.LBPolicy = string(cconst.LBRoundRobin)
@@ -175,14 +137,17 @@ func (s *GateService) Start() error {
 	pushSrv := grpc_server.NewGatePushServer(s.hub)
 	pb_service.RegisterGatePushServer(s.grpcSrv, pushSrv)
 	s.wg.Add(1)
+	cfg := common.GetArgConfig()
+	grpcAddr := cfg.GRpcAddress
 	go func() {
 		defer s.wg.Done()
-		lis, err := net.Listen("tcp", s.grpcAddr)
+		//lis, err := net.Listen("tcp", s.grpcAddr)
+		lis, err := net.Listen("tcp", grpcAddr)
 		if err != nil {
-			s.clog.Error("grpc server listen failed", zap.String("addr", s.grpcAddr), zap.Error(err))
+			s.clog.Error("grpc server listen failed", zap.String("addr", grpcAddr), zap.Error(err))
 			return // 移除os.Exit，交给上层Shutdown处理
 		}
-		s.clog.Info("gate grpc server listen success", zap.String("addr", s.grpcAddr))
+		s.clog.Info("gate grpc server listen success", zap.String("addr", grpcAddr))
 		err = s.grpcSrv.Serve(lis)
 		if err != nil && err != grpc.ErrServerStopped {
 			s.clog.Error("grpc server serve error", zap.Error(err))
@@ -191,10 +156,11 @@ func (s *GateService) Start() error {
 	}()
 
 	// 2. 启动websocket http服务
+	wsAddress := cfg.WsAddress
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.wsHandler)
 	s.httpSrv = &http.Server{
-		Addr:    s.gateAddr,
+		Addr:    wsAddress,
 		Handler: mux,
 		// 增加http服务超时，防止连接永久挂住
 		ReadTimeout:  10 * time.Second,
@@ -204,7 +170,7 @@ func (s *GateService) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.clog.Info("gate http ws server listen start", zap.String("addr", s.gateAddr))
+		s.clog.Info("gate http ws server listen start", zap.String("addr", wsAddress))
 		err := s.httpSrv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			s.clog.Error("http ws server listen failed", zap.Error(err))
@@ -235,17 +201,14 @@ func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
 		s.clog.Warn("websocket upgrade fail", zap.Uint64("uid", uid), zap.Error(err))
 		return
 	}
-
+	cfg := common.GetArgConfig()
+	grpcAddrRegister := cfg.GRpcAddressRegister
 	//
-	cli := conn.NewClientConn(ws, uid, s.grpcAddr, s.redisCli, s.cfg, s.hub)
+	cli := conn.NewClientConn(ws, uid, grpcAddrRegister, s.redisCli, s.cfg, s.hub, s.pusServer)
 	if !s.hub.ReplaceConn(uid, cli) {
 		cli.Close()
 		return
 	}
-	//if !s.hub.AddConn(uid, cli) {
-	//	cli.Close()
-	//	return
-	//}
 }
 
 // handleWsFrame 处理客户端上行WsFrame，转发GameServer
@@ -447,6 +410,8 @@ func (s *GateService) Shutdown(ctx context.Context) error {
 
 	s.clog.Info("Shutdown step5: game grpc client pool shutdown complete")
 	s.gClient.Close()
+
+	s.pusServer.Close()
 	// 步骤6：设置超时等待所有wg协程退出，解决永久阻塞卡死
 	waitDone := make(chan struct{}, 1)
 	go func() {

@@ -60,7 +60,7 @@ func (s *PushService) Start() error {
 	s.grpcSrv = grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(kaep),
 	)
-	svr := grpc_server.NewPushServer()
+	svr := grpc_server.NewPushServer(10)
 	pb_service.RegisterPushServiceServer(s.grpcSrv, svr)
 	addr := s.sInfo.grpcAddress
 	target := s.sInfo.target

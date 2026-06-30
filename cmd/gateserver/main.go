@@ -22,8 +22,6 @@ import (
 )
 
 func main() {
-	os.Setenv("GRPC_GO_LOG_SEVERITY_LEVEL", "INFO")
-	os.Setenv("GRPC_GO_LOG_VERBOSITY_LEVEL", "99")
 	err := config.Init()
 	if err != nil {
 		log.Fatalf("init config failed: %v", err)
@@ -35,25 +33,21 @@ func main() {
 	initArgConfig()
 	rc := rediscli.GetClient()
 	cfg := config.GlobalConf
+	argcfg := common.GetArgConfig()
+	clog.Debug("argcfg", zap.Any("argcfg", argcfg))
 	err = rc.Init(clog, &cfg.Redis)
 	if err != nil {
 		clog.Error("redis init failed", zap.Error(err))
 		return
 	}
 	defer rc.Close()
-	//wsPort, gPort := getPort()
-	//gateAddr := fmt.Sprintf(":%s", wsPort) //k8s
-	//grpcAddr := fmt.Sprintf(":%s", gPort)
-	gateAddr, grpcAddr := getAddress()
-	clog.Info("grpc addr", zap.String("gateAddr", gateAddr), zap.String("grpcAddr", grpcAddr))
 	etcdCli, err := etcdx.InitGlobalLeaseEtcd()
 	if err != nil {
 		clog.Error("init etcd failed", zap.Error(err))
 		return
 	}
 	defer etcdCli.Close()
-	//balancerx.InitTargetDirectBalanceBuilder()
-	gateSvc := gate.NewGateService(cfg.Gate, gateAddr, grpcAddr)
+	gateSvc := gate.NewGateService(cfg.Gate)
 	err = gateSvc.Start()
 	if err != nil {
 		clog.Error("start gate failed", zap.Error(err))
@@ -73,25 +67,6 @@ func main() {
 	clog.Info("gateserver shutdown")
 
 }
-func getAddress() (wsAddr string, grpcAddr string) {
-	wsPort, gPort := getPort()
-	ip := common.GetArgConfig().IPString
-	wsAddr = fmt.Sprintf("%s:%s", ip, wsPort)
-	grpcAddr = fmt.Sprintf("%s:%s", ip, gPort)
-	return
-}
-func getPort() (wsPort, gPort string) {
-	wsPort = os.Getenv(cconst.GATE_WS_PORT)
-	cfg := config.GetGateServerCfg()
-	if wsPort == "" {
-		wsPort = cfg.WsPort
-	}
-	gPort = os.Getenv(cconst.GATE_GRPC_PORT)
-	if gPort == "" {
-		gPort = cfg.GRpcPort
-	}
-	return
-}
 
 var (
 	Version   = "1.0.0.1"
@@ -101,22 +76,43 @@ var (
 // InitArgConfig 从两个环境中获取 区分是k8s 还是本地项目
 func initArgConfig() {
 	common.InitArgConfig()
-	isK8s := env.IsK8sEnv()
-	if !isK8s && !flag.Parsed() {
+	if !flag.Parsed() {
 		parseFlag()
 	}
+	isK8s := env.IsK8sEnv()
+	if !isK8s {
+		return
+	}
+	// 处理k8s 的环境情况
+	wsPort := os.Getenv(cconst.GATE_WS_PORT)
+	gPort := os.Getenv(cconst.GATE_GRPC_PORT)
+	podIP := os.Getenv(cconst.GATE_POD_IP)
+	wsAddr := fmt.Sprintf(":%s", wsPort)
+	grpcAddr := fmt.Sprintf(":%s", gPort)
+	wsAddrRegister := fmt.Sprintf("%s:%s", podIP, wsPort)
+	grpcAddrRegister := fmt.Sprintf("%s:%s", podIP, gPort)
+	argConfig := common.GetArgConfig()
+	argConfig.WsAddress = wsAddr
+	argConfig.WsAddressRegister = wsAddrRegister
+	argConfig.GRpcAddress = grpcAddr
+	argConfig.GRpcAddressRegister = grpcAddrRegister
+	argConfig.WsPort = wsPort
+	argConfig.GRpcPort = gPort
+	argConfig.IPString = podIP
 }
 func parseFlag() {
 	var showVersion bool
 	var showVersionTime bool
-	//var port string
-	//var gPort string
 	var ipString string
+	var wsPort string
+	var grpcPort string
 	flag.BoolVar(&showVersion, "v", false, "show version")
 	flag.BoolVar(&showVersionTime, "t", false, "显示版本编译时间")
 	flag.StringVar(&ipString, "ip", "127.0.0.1", "服务实例IP")
-	//flag.StringVar(&port, "port", "8090", "websocket监听端口号")
-	//flag.StringVar(&gPort, "grpc_port", "8099", "grpc监听端口号")
+	flag.StringVar(&wsPort, "wsPort", "", "websocket监听端口号")
+	//flag.StringVar(&wsPort, "wsPort", "8090", "websocket监听端口号")
+	//flag.StringVar(&grpcPort, "grpc_port", "8099", "grpc监听端口号")
+	flag.StringVar(&grpcPort, "grpc_port", "", "grpc监听端口号")
 	flag.Parse()
 	if showVersion {
 		fmt.Printf("Version: %s\n", Version)
@@ -126,6 +122,24 @@ func parseFlag() {
 		fmt.Printf("BuildTime: %s\n", BuildTime)
 		os.Exit(0)
 	}
+
 	argConfig := common.GetArgConfig()
+	gateCfg := argConfig.GConfig.Gate
 	argConfig.IPString = ipString
+	argConfig.WsPort = gateCfg.WsPort
+	argConfig.GRpcPort = gateCfg.GRpcPort
+	if wsPort != "" {
+		argConfig.WsPort = wsPort
+	}
+	if grpcPort != "" {
+		argConfig.GRpcPort = grpcPort
+	}
+	wsAddr := fmt.Sprintf("%s:%s", argConfig.IPString, argConfig.WsPort)
+	wsAddrRegister := fmt.Sprintf("%s:%s", argConfig.IPString, argConfig.WsPort)
+	grpcAddr := fmt.Sprintf("%s:%s", argConfig.IPString, argConfig.GRpcPort)
+	grpcAddrRegister := fmt.Sprintf("%s:%s", argConfig.IPString, argConfig.GRpcPort)
+	argConfig.WsAddress = wsAddr
+	argConfig.WsAddressRegister = wsAddrRegister
+	argConfig.GRpcAddress = grpcAddr
+	argConfig.GRpcAddressRegister = grpcAddrRegister
 }

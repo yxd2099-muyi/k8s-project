@@ -11,7 +11,7 @@ const (
 const (
 	GATE_WS_PORT   = "GATE_WS_PORT"
 	GATE_GRPC_PORT = "GATE_GRPC_PORT"
-	GateIP         = "GATE_Pod_IP"
+	GATE_POD_IP    = "GATE_POD_IP"
 )
 
 const (

@@ -2,6 +2,7 @@ package conn
 
 import (
 	"context"
+	"github.com/k8s/muyi/internal/gate/common"
 	"runtime"
 	"time"
 
@@ -41,9 +42,10 @@ type ClientConn struct {
 	wg         sync.WaitGroup
 	mu         sync.Mutex
 	connMgr    *ConnManager
+	pushInter  common.PushInter
 }
 
-func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate, connMgr *ConnManager) *ClientConn {
+func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate, connMgr *ConnManager, pushInter common.PushInter) *ClientConn {
 	ctx, cancel := context.WithCancel(context.Background())
 	cli := &ClientConn{
 		ctx:        ctx,
@@ -218,6 +220,7 @@ func (c *ClientConn) SetUserOnline(uid uint64, gateAddr string, expireTime int) 
 	if err != nil {
 		c.clog.Error("failed to set user online", zap.Uint64("uid", uid), zap.Error(err))
 	}
+	c.pushInter.OnUserOnline(uid, gateAddr)
 	return err
 }
 
@@ -225,6 +228,7 @@ func (c *ClientConn) DelUserSession(uid uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), cconst.ContextTimeOut2s)
 	defer cancel()
 	c.userDb.DelUserSession(ctx, uid)
+	c.pushInter.OnUserOffline(uid, "")
 }
 
 // Close 【修复核心】调整顺序+超时兜底，保证必打印finish日志
