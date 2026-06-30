@@ -59,6 +59,7 @@ func (s *PushServer) SendPushEvents(stream pb_service.PushService_SendPushEvents
 		select {
 		case s.eventCh <- evt:
 			// 入队成功
+			clog.Debug("SendPushEvents", zap.Any("event", evt))
 		case <-s.ctx.Done():
 			clog.Info("context done")
 			return s.ctx.Err()

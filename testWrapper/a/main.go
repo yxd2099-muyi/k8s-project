@@ -284,6 +284,7 @@ func (c *WsClient) Close() {
 func main() {
 	// 模拟用户uid
 	uid := uint64(10001)
+	fmt.Println("start ,", uid)
 	client, err := NewWsClient(uid)
 	if err != nil {
 		panic(err)

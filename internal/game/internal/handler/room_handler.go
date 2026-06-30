@@ -4,6 +4,7 @@ import (
 	pb_push "github.com/k8s/muyi/api/pb/push"
 	pb_room "github.com/k8s/muyi/api/pb/room"
 	"github.com/k8s/muyi/internal/game/common"
+	"github.com/k8s/muyi/internal/game/sender"
 )
 
 func NewRoomHandler() {
@@ -20,6 +21,8 @@ func (c *HandlerRoom) Create(ctx *common.TContext, req []byte, room common.IRoom
 	uId := ctx.Uid
 	p := &pb_push.PushChat{Content: "HandlerRoom hello world"}
 	//push.SinglePushUser(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
-	room.SinglePush(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
+	//room.SinglePush(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
+	one := sender.GetPushEvent(uId, []uint64{uId}, pb_push.CmdPushKind_Cmd_Chat, p)
+	sender.PushEvent(one)
 	return nil, nil
 }

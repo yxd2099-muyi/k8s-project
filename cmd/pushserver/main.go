@@ -86,8 +86,8 @@ func parseFlag() {
 	}
 	argConfig := common.GetArgConfig()
 	if len(port) == 0 {
-		gameCfg := config.GetGameServerCfg()
-		port = gameCfg.Port
+		pushCfg := argConfig.GConfig.Push
+		port = pushCfg.Port
 	}
 	argConfig.Port = port
 	argConfig.PodName = podName

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/k8s/muyi/internal/game/common"
+	"github.com/k8s/muyi/internal/game/sender"
 	"github.com/k8s/muyi/internal/game/server"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
@@ -44,6 +45,12 @@ func main() {
 		return
 	}
 	defer etcdCli.Close()
+	sendpush, err := sender.InitPushSender()
+	if err != nil {
+		clog.Error("init sendpush failed", zap.Error(err))
+		return
+	}
+	defer sendpush.Close()
 	gameSvc, err := server.NewGameService()
 	if err != nil {
 		clog.Error("create game service failed")
