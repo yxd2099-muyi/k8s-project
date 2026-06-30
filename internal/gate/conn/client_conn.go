@@ -60,6 +60,7 @@ func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *redis
 		userDb:     db.NewUserObj(),
 		clog:       logger.L,
 		connMgr:    connMgr,
+		pushInter:  pushInter,
 	}
 	// 3个常驻协程
 	cli.wg.Add(3)

@@ -3,7 +3,10 @@ package grpc_server
 import (
 	"context"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/gate/common"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"sync"
 )
 
@@ -22,6 +25,10 @@ type PushClient struct {
 func NewPushClient(conn *grpc.ClientConn, gs *PushServer) (*PushClient, error) {
 	client := pb_service.NewPushServiceClient(conn)
 	ctx, cancel := context.WithCancel(context.Background())
+	argCfg := common.GetArgConfig()
+	gateAddr := argCfg.GRpcAddressRegister
+	md := metadata.Pairs(cconst.ContextFieldGateAddress, gateAddr)
+	ctx = metadata.NewOutgoingContext(context.Background(), md)
 	stream, err := client.PushStream(ctx)
 	if err != nil {
 		conn.Close()

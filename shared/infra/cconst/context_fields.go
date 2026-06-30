@@ -12,3 +12,7 @@ const (
 	ContextFieldRouterTargetAddress = "target-address" // 负载均衡时候 要到的 的目标地址
 	ContextFieldRouterXRoomId       = "x-room-id"      // 根据房间负载均衡到 （一致性hash方式） 到具体对应房间
 )
+
+const (
+	ContextFieldGateAddress = "gate-address"
+)

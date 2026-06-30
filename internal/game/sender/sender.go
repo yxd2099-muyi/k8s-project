@@ -22,25 +22,34 @@ var (
 	once             sync.Once
 )
 
+const (
+	batchSize    = 50
+	flushTimeout = 100 * time.Millisecond
+	rpcTimeout   = 2 * time.Second // 单次RPC超时
+	retryWait    = 200 * time.Millisecond
+)
+
 func InitPushSender() (*PushSender, error) {
 	gcfg := grpcx.DefaultClientConfig()
 	target := etcdx.GetEtcdPushServerTarget()
 	gcfg.Target = target
 	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBRoundRobin)
+
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
 	clog := logger.L
 	clog.Debug("InitPushSender start")
-	var err error
+
 	gcli, err := grpcx.NewGrpcClient(gcfg, etcdCli.GetClient())
 	if err != nil {
-		clog.Error("InitPushSender start", zap.Error(err))
+		clog.Error("InitPushSender create grpc client err", zap.Error(err))
 		return nil, err
 	}
+
 	once.Do(func() {
 		sender, err := NewPushSender(gcli)
 		if err != nil {
-			clog.Error("InitPushSender start", zap.Error(err))
+			clog.Error("NewPushSender failed", zap.Error(err))
 			return
 		}
 		GlobalPushSender = sender
@@ -50,115 +59,151 @@ func InitPushSender() (*PushSender, error) {
 	return GlobalPushSender, nil
 }
 
-// PushSender 负责将业务事件批量发送给 pushserver
 type PushSender struct {
-	client     pb_service.PushServiceClient
-	stream     pb_service.PushService_SendPushEventsClient
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	eventCh    chan *pb_service.PushEvent // 缓冲队列
-	batchSize  int
-	ticker     *time.Ticker
-	closed     bool
-	mu         sync.Mutex
-	clog       *zap.Logger
-	grpcClient *grpcx.GrpcClient
+	client       pb_service.PushServiceClient
+	globalCtx    context.Context
+	globalCancel context.CancelFunc
+	wg           sync.WaitGroup
+	eventCh      chan *pb_service.PushEvent
+	ticker       *time.Ticker
+	closed       bool
+	mu           sync.Mutex
+	clog         *zap.Logger
+	grpcClient   *grpcx.GrpcClient
+	failedBatch  []*pb_service.PushEvent // 发送失败暂存，重试不丢消息
 }
 
 func NewPushSender(grpcClient *grpcx.GrpcClient) (*PushSender, error) {
-
 	client := pb_service.NewPushServiceClient(grpcClient.Conn())
-	ctx, cancel := context.WithCancel(context.Background())
-	// 创建客户端流
-	stream, err := client.SendPushEvents(ctx)
-	if err != nil {
-		cancel()
-		grpcClient.Close()
-		return nil, err
-	}
+	globalCtx, globalCancel := context.WithCancel(context.Background())
+
 	ps := &PushSender{
-		client:     client,
-		stream:     stream,
-		ctx:        ctx,
-		cancel:     cancel,
-		eventCh:    make(chan *pb_service.PushEvent, 1000), // 超过1000 丢弃
-		batchSize:  50,
-		ticker:     time.NewTicker(100 * time.Millisecond),
-		clog:       logger.L,
-		grpcClient: grpcClient,
+		client:       client,
+		globalCtx:    globalCtx,
+		globalCancel: globalCancel,
+		eventCh:      make(chan *pb_service.PushEvent, 1000),
+		ticker:       time.NewTicker(flushTimeout),
+		clog:         logger.L,
+		grpcClient:   grpcClient,
 	}
-	clog := ps.clog
-	clog.Debug("InitPushSender start")
+
 	ps.wg.Add(1)
 	go ps.worker()
 	return ps, nil
 }
 
-// worker 从队列取出事件，批量发送
 func (ps *PushSender) worker() {
 	clog := ps.clog
 	defer func() {
 		if r := recover(); r != nil {
-			// log panic
-			ps.clog.Error("recover from panic", zap.Any("recover", r))
+			clog.Error("worker panic recover", zap.Any("panic", r))
 		}
 		ps.wg.Done()
 	}()
-	batch := make([]*pb_service.PushEvent, 0, ps.batchSize)
-	sendBatch := func() {
-		if len(batch) == 0 {
-			return
+
+	batch := make([]*pb_service.PushEvent, 0, batchSize)
+
+	sendBatch := func(list []*pb_service.PushEvent) bool {
+		if len(list) == 0 {
+			return true
 		}
-		// 循环发送每个事件
-		for _, evt := range batch {
-			select {
-			case <-ps.ctx.Done():
-				return
-			default:
-			}
-			// 过期检查
+
+		// ✅ 每次RPC使用独立超时上下文，不再共用全局ctx
+		ctx, cancel := context.WithTimeout(ps.globalCtx, rpcTimeout)
+		defer cancel()
+
+		stream, err := ps.client.SendPushEvents(ctx)
+		if err != nil {
+			clog.Error("create stream failed", zap.Error(err), zap.Int("count", len(list)))
+			return false
+		}
+
+		for _, evt := range list {
 			if evt.ExpireAt > 0 && evt.ExpireAt < time.Now().Unix() {
 				continue
 			}
-			if err := ps.stream.Send(evt); err != nil {
-				// 记录错误，可能重试，但这里仅打印
-				// 注意：如果流关闭，需要退出
-				clog.Error("push send failed", zap.Error(err))
-				return
+			if err := stream.Send(evt); err != nil {
+				clog.Error("stream send failed", zap.Error(err), zap.String("event_id", evt.EventId))
+				return false
 			}
-			clog.Debug("send event success", zap.Any("event", evt))
 		}
-		batch = batch[:0]
+
+		resp, err := stream.CloseAndRecv()
+		if err != nil {
+			clog.Error("CloseAndRecv failed", zap.Error(err), zap.Int("count", len(list)))
+			return false
+		}
+
+		clog.Debug("batch send success",
+			zap.String("last_event_id", resp.EventId),
+			zap.Bool("success", resp.Success),
+			zap.Int("total", len(list)))
+		return true
 	}
+
 	for {
 		select {
-		case <-ps.ctx.Done():
-			sendBatch()
+		case <-ps.globalCtx.Done():
+			// 退出前把剩余消息发送一次
+			if len(batch) > 0 {
+				_ = sendBatch(batch)
+			}
+			if len(ps.failedBatch) > 0 {
+				_ = sendBatch(ps.failedBatch)
+			}
 			return
+
 		case evt, ok := <-ps.eventCh:
 			if !ok {
-				sendBatch()
+				if len(batch) > 0 {
+					_ = sendBatch(batch)
+				}
 				return
 			}
 			batch = append(batch, evt)
-			if len(batch) >= ps.batchSize {
-				sendBatch()
+			if len(batch) >= batchSize {
+				if !sendBatch(batch) {
+					// 发送失败，存入失败队列等待下一轮重试
+					ps.failedBatch = append(ps.failedBatch, batch...)
+				}
+				batch = batch[:0]
 			}
+
 		case <-ps.ticker.C:
-			sendBatch()
+			// 先重试上一轮失败的批次
+			if len(ps.failedBatch) > 0 {
+				if sendBatch(ps.failedBatch) {
+					ps.failedBatch = ps.failedBatch[:0]
+				} else {
+					time.Sleep(retryWait)
+				}
+			}
+			// 再发送当前积攒批次
+			if len(batch) > 0 {
+				if !sendBatch(batch) {
+					ps.failedBatch = append(ps.failedBatch, batch...)
+				}
+				batch = batch[:0]
+			}
 		}
 	}
 }
 
-// Push 将事件放入队列（非阻塞）
+// Push 非阻塞入队
 func (ps *PushSender) Push(evt *pb_service.PushEvent) error {
+	ps.mu.Lock()
+	closed := ps.closed
+	ps.mu.Unlock()
+	if closed {
+		ps.clog.Warn("sender already closed, drop event", zap.String("event_id", evt.EventId))
+		return nil
+	}
+
 	select {
 	case ps.eventCh <- evt:
 		return nil
 	default:
-		ps.clog.Warn("push event failed QueueFull", zap.Any("evt", evt))
-		//return ErrQueueFully
+		ps.clog.Warn("push queue full drop event", zap.String("event_id", evt.EventId))
 		return nil
 	}
 }
@@ -172,20 +217,18 @@ func (ps *PushSender) Close() error {
 	}
 	ps.closed = true
 	ps.mu.Unlock()
-	ps.cancel()
+
+	ps.globalCancel()
 	ps.ticker.Stop()
 	close(ps.eventCh)
-	ps.grpcClient.Close()
 	ps.wg.Wait()
-	if err := ps.stream.CloseSend(); err != nil {
-		// 忽略
-		ps.clog.Warn("close_send failed", zap.Error(err))
-	}
-	ps.clog.Info("closed PushSender stream")
+	ps.grpcClient.Close()
+
+	ps.clog.Info("PushSender graceful closed")
 	return nil
 }
 
-// 获取推送对象
+// GetPushEvent 组装推送消息
 func GetPushEvent(sendUid uint64, uids []uint64, cmd pb_push.CmdPushKind, p proto.Message) *pb_service.PushEvent {
 	one := &pb_service.PushEvent{}
 	one.EventId = kit.NewShortUUID()
@@ -196,13 +239,17 @@ func GetPushEvent(sendUid uint64, uids []uint64, cmd pb_push.CmdPushKind, p prot
 	one.ExpireAt = ts + 24*60*60*120
 
 	payload, _ := serializer.EncodeProto(p)
-	req := &pb_base.PushBody{}
-	req.Cmd = uint32(cmd)
-	req.Payload = payload
+	req := &pb_base.PushBody{
+		Cmd:     uint32(cmd),
+		Payload: payload,
+	}
 	payload, _ = serializer.EncodeProto(req)
 	one.Payload = payload
 	return one
 }
+
 func PushEvent(evt *pb_service.PushEvent) {
-	GlobalPushSender.Push(evt)
+	if GlobalPushSender != nil {
+		_ = GlobalPushSender.Push(evt)
+	}
 }
