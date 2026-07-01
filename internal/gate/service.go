@@ -431,11 +431,6 @@ func (s *GateService) Shutdown(ctx context.Context) error {
 		return ctx.Err()
 	}
 	s.clog.Info("Shutdown step7: all background goroutine exited normally")
-	// 步骤7：关闭redis连接（按需开启）
-	//if err := s.redisCli.Close(); err != nil {
-	//	s.clog.Error("Shutdown step7: redis client close error", zap.Error(err))
-	//} else {
-	//	s.clog.Info("Shutdown step7: redis client closed")
-	//}
+
 	return nil
 }

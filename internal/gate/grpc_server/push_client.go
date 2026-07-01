@@ -89,7 +89,7 @@ func (pc *PushClient) sendLoop() {
 	}
 }
 
-// recvLoop 【重点修复】给Recv增加上下文保护，杜绝永久阻塞
+// recvLoop 给Recv增加上下文保护，杜绝永久阻塞
 func (pc *PushClient) recvLoop() {
 	defer func() {
 		if r := recover(); r != nil {
