@@ -2,6 +2,8 @@ package grpc_server
 
 import (
 	"context"
+	"errors"
+	"io"
 	"sync/atomic"
 
 	pb_service "github.com/k8s/muyi/api/pb/service"
@@ -51,15 +53,12 @@ func NewGateConn(stream pb_service.PushService_PushStreamServer, router *Router)
 
 func (gc *GateConn) Handle() error {
 	gc.clog.Info("gate conn established")
-
+	defer gc.doClose()
 	// 启动发送循环
 	go gc.sendLoop()
 
 	// 接收循环（主协程）
 	recvErr := gc.recvLoop()
-
-	// 清理
-	gc.doClose()
 
 	if st, ok := status.FromError(recvErr); ok && st.Code() == codes.Canceled {
 		gc.clog.Info("gate stream closed normally")
@@ -94,7 +93,19 @@ func (gc *GateConn) recvLoop() error {
 
 		req, err := gc.stream.Recv()
 		if err != nil {
-			gc.clog.Error("gate conn recv error", zap.Error(err))
+			// 区分正常关闭 vs 真正异常
+			st, ok := status.FromError(err)
+			if ok && st.Code() == codes.Canceled {
+				gc.clog.Info("gate stream context canceled (normal close)")
+				return err
+			}
+			if errors.Is(err, io.EOF) {
+				gc.clog.Info("gate stream closed normally by peer")
+				return err
+			}
+
+			// 只有真正网络异常才打错误日志
+			gc.clog.Error("gate conn recv unexpected error", zap.Error(err))
 			return err
 		}
 

@@ -123,7 +123,11 @@ func (gs *PushServer) handlePushEtcdInfoForEndPoint(key, address string, value a
 		addr := kit.ExtractAddrFromEtcdKey(key)
 		clog.Info("handle game etcd info", zap.String("key", key), zap.String("addr", addr))
 		gs.mu.Lock()
-		delete(gs.pushClients, addr)
+		if pc, ok := gs.pushClients[addr]; ok {
+			delete(gs.pushClients, addr)
+			pc.Close()
+		}
+
 		gs.mu.Unlock()
 	}
 }
