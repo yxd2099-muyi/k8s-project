@@ -9,46 +9,42 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/client/v3/naming/endpoints"
 	"go.uber.org/zap"
+	"math/rand"
 	"sync"
 	"time"
 )
 
-// 全局常量统一定义
 const (
-	DefaultLeaseTTL   = 1200 // 默认20分钟租约
-	OpTimeout         = 5 * time.Second
-	WatchRetryBaseMs  = 1000
-	WatchRetryMaxMs   = 5000
-	RebuildLeaseSleep = 3 * time.Second // 加长冷却，防止雪崩重建
+	DefaultLeaseTTL    = 1200
+	OpTimeout          = 8 * time.Second
+	WatchRetryBaseMs   = 1000
+	WatchRetryMaxMs    = 5000
+	RebuildLeaseSleep  = 5 * time.Second
+	LeaseGrantRetryMax = 3
 )
 
-// 全局私有变量，单例实例 + once 锁
 var (
 	leaseEtcdInstance *LeaseEtcdClient
 	once              sync.Once
 )
 
-// EtcdServerInfo  服务信息
 type EtcdServerInfo struct {
-	Target string // target 存储前缀 也是service
-	Addr   string // 服务的地址 192.168.179.88:9090
+	Target string
+	Addr   string
 	Meta   any
 }
 
-// LeaseEtcdClient 带统一共享租约的etcd客户端
 type LeaseEtcdClient struct {
 	client *clientv3.Client
 
-	// 租约相关
 	mu          sync.Mutex
 	leaseID     clientv3.LeaseID
 	leaseTTL    int64
-	loopRunning bool // 心跳协程唯一运行标记
+	loopRunning bool
 
-	// regCache：仅缓存当前进程主动Register注册的key
-	regCache               sync.Map // key:string  value:string
-	etcdGrpcServerManager  sync.Map // key:service -> manager
-	etcdEndPointServerInfo sync.Map // key -> *EtcdServerInfo
+	regCache               sync.Map
+	etcdGrpcServerManager  sync.Map
+	etcdEndPointServerInfo sync.Map
 
 	log          *zap.Logger
 	globalCtx    context.Context
@@ -68,7 +64,6 @@ func InitGlobalLeaseEtcd() (*LeaseEtcdClient, error) {
 	return leaseEtcdInstance, err
 }
 
-// NewLeaseEtcdClient 创建带共享租约的etcd客户端（单进程全局一个实例）
 func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
 	etcdConfig := config.GlobalConf.Etcd
 	cliCfg := clientv3.Config{
@@ -85,7 +80,6 @@ func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
 		return nil, fmt.Errorf("new etcd client err: %w", err)
 	}
 
-	// 兜底租约时长
 	leaseTTL := int64(etcdConfig.LeaseTTL)
 	if leaseTTL <= 0 {
 		leaseTTL = DefaultLeaseTTL
@@ -100,15 +94,12 @@ func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
 		globalCancel: globalCancel,
 	}
 
-	// 创建租约
-	if err = lec.createLease(); err != nil {
+	if err = lec.createLeaseWithRetry(); err != nil {
 		_ = lec.Close()
 		return nil, err
 	}
 
-	// 启动唯一心跳协程
 	lec.startKeepAliveLoop()
-
 	lec.log.Info("lease etcd client init success", zap.Int64("leaseTTL", leaseTTL))
 	return lec, nil
 }
@@ -117,13 +108,33 @@ func (lec *LeaseEtcdClient) GetClient() *clientv3.Client {
 	return lec.client
 }
 
-// createLease 创建共享租约（加锁保护租约ID）
+// createLeaseWithRetry 带重试创建租约
+func (lec *LeaseEtcdClient) createLeaseWithRetry() error {
+	var lastErr error
+	for retry := 0; retry < LeaseGrantRetryMax; retry++ {
+		err := lec.createLease()
+		if err == nil {
+			return nil
+		}
+		lastErr = err
+		lec.log.Warn("LeaseGrant failed, prepare retry", zap.Int("retry", retry+1), zap.Error(err))
+		sleepMs := (retry + 1) * 1000
+		// 可中断休眠（若上下文取消则提前返回）
+		if !lec.sleepWithContext(time.Duration(sleepMs+rand.Intn(500)) * time.Millisecond) {
+			return fmt.Errorf("context canceled during retry sleep")
+		}
+	}
+	return fmt.Errorf("lease grant all retries failed: %w", lastErr)
+}
+
+// createLease 创建共享租约
 func (lec *LeaseEtcdClient) createLease() error {
 	lec.mu.Lock()
 	defer lec.mu.Unlock()
 
-	ctx, cancel := context.WithTimeout(lec.globalCtx, OpTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), OpTimeout)
 	defer cancel()
+
 	resp, err := lec.client.Lease.Grant(ctx, lec.leaseTTL)
 	if err != nil {
 		return fmt.Errorf("lease grant err: %w", err)
@@ -133,7 +144,7 @@ func (lec *LeaseEtcdClient) createLease() error {
 	return nil
 }
 
-// startKeepAliveLoop 启动唯一心跳主循环，不再预创建KeepAlive流
+// startKeepAliveLoop 启动唯一心跳主循环
 func (lec *LeaseEtcdClient) startKeepAliveLoop() {
 	lec.mu.Lock()
 	if lec.loopRunning {
@@ -147,7 +158,7 @@ func (lec *LeaseEtcdClient) startKeepAliveLoop() {
 	go lec.keepAliveMainLoop()
 }
 
-// keepAliveMainLoop 主循环：每次断开都重建租约+新建心跳流，杜绝多流冲突
+// keepAliveMainLoop 主循环：每次断开都重建租约+新建心跳流
 func (lec *LeaseEtcdClient) keepAliveMainLoop() {
 	defer func() {
 		if r := recover(); r != nil {
@@ -167,7 +178,6 @@ func (lec *LeaseEtcdClient) keepAliveMainLoop() {
 		default:
 		}
 
-		// 1. 创建当前租约的心跳流，流生命周期仅限本轮循环
 		lec.mu.Lock()
 		leaseID := lec.leaseID
 		lec.mu.Unlock()
@@ -175,25 +185,24 @@ func (lec *LeaseEtcdClient) keepAliveMainLoop() {
 		keepChan, err := lec.client.Lease.KeepAlive(lec.globalCtx, leaseID)
 		if err != nil {
 			lec.log.Error("create keep alive stream failed, will rebuild lease", zap.Error(err))
-			time.Sleep(RebuildLeaseSleep)
+			// 可中断休眠
+			if !lec.sleepWithContext(RebuildLeaseSleep) {
+				return
+			}
 			_ = lec.rebuildLeaseAndReloadRegKeys()
 			continue
 		}
 
-		// 2. 消费心跳channel
-		channelClosed := false
+		// 消费心跳channel，通道关闭则跳出
 		for range keepChan {
-			// 正常收到心跳响应，只消费，不做业务逻辑
-		}
-		channelClosed = true
-
-		if !channelClosed {
-			continue
 		}
 
-		// 3. 流正常关闭，开始重建租约，先冷却再重建，防止无限震荡
+		// 流关闭，进入重建流程
 		lec.log.Warn("lease keep alive stream closed, start rebuild lease")
-		time.Sleep(RebuildLeaseSleep)
+		// 【关键】可中断休眠，等待冷却
+		if !lec.sleepWithContext(RebuildLeaseSleep) {
+			return
+		}
 		if err := lec.rebuildLeaseAndReloadRegKeys(); err != nil {
 			lec.log.Error("rebuild lease failed", zap.Error(err))
 		} else {
@@ -202,14 +211,23 @@ func (lec *LeaseEtcdClient) keepAliveMainLoop() {
 	}
 }
 
-// rebuildLeaseAndReloadRegKeys 重建租约+重注册
+// sleepWithContext 可中断睡眠，返回 false 表示上下文已取消
+func (lec *LeaseEtcdClient) sleepWithContext(d time.Duration) bool {
+	select {
+	case <-time.After(d):
+		return true
+	case <-lec.globalCtx.Done():
+		return false
+	}
+}
+
+// rebuildLeaseAndReloadRegKeys 重建租约+重注册（加入重试机制）
 func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
-	// 服务已经开始关闭，不再重建租约
 	if lec.globalCtx.Err() != nil {
 		return fmt.Errorf("service shutting down, skip rebuild lease")
 	}
 
-	if err := lec.createLease(); err != nil {
+	if err := lec.createLeaseWithRetry(); err != nil {
 		return err
 	}
 
@@ -217,7 +235,7 @@ func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
 	lec.regCache.Range(func(k, v any) bool {
 		key := k.(string)
 		val := v.(string)
-		ctx, cancel := context.WithTimeout(lec.globalCtx, OpTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), OpTimeout)
 		defer cancel()
 		if err := lec.Register(ctx, key, val); err != nil {
 			lec.log.Error("re-register key failed", zap.String("key", key), zap.Error(err))
@@ -232,13 +250,13 @@ func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
 	var endpointErr error
 	lec.etcdEndPointServerInfo.Range(func(k, v any) bool {
 		key := k.(string)
-		val, ok := v.(*EtcdServerInfo)
+		info, ok := v.(*EtcdServerInfo)
 		if !ok {
 			return true
 		}
-		ctx, cancel := context.WithTimeout(lec.globalCtx, OpTimeout)
+		ctx, cancel := context.WithTimeout(context.Background(), OpTimeout)
 		defer cancel()
-		if err := lec.RegisterGrpcServerInfo(ctx, val); err != nil {
+		if err := lec.RegisterGrpcServerInfo(ctx, info); err != nil {
 			lec.log.Error("re-register grpc endpoint failed", zap.String("key", key), zap.Error(err))
 			endpointErr = err
 		}
@@ -247,7 +265,7 @@ func (lec *LeaseEtcdClient) rebuildLeaseAndReloadRegKeys() error {
 	return endpointErr
 }
 
-// Register 注册KV，绑定共享租约，存入本地注册缓存
+// Register 注册KV，绑定共享租约
 func (lec *LeaseEtcdClient) Register(ctx context.Context, key, value string) error {
 	lec.mu.Lock()
 	leaseID := lec.leaseID
@@ -262,7 +280,6 @@ func (lec *LeaseEtcdClient) Register(ctx context.Context, key, value string) err
 	return nil
 }
 
-// UnRegister 注销本机注册key
 func (lec *LeaseEtcdClient) UnRegister(ctx context.Context, key string) error {
 	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
@@ -275,7 +292,6 @@ func (lec *LeaseEtcdClient) UnRegister(ctx context.Context, key string) error {
 	return nil
 }
 
-// Exist 判断key是否存在
 func (lec *LeaseEtcdClient) Exist(ctx context.Context, key string) (bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
@@ -286,7 +302,6 @@ func (lec *LeaseEtcdClient) Exist(ctx context.Context, key string) (bool, error)
 	return len(res.Kvs) > 0, nil
 }
 
-// Get 通用查询单个key
 func (lec *LeaseEtcdClient) Get(ctx context.Context, key string) (string, bool, error) {
 	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
@@ -300,7 +315,6 @@ func (lec *LeaseEtcdClient) Get(ctx context.Context, key string) (string, bool, 
 	return string(resp.Kvs[0].Value), true, nil
 }
 
-// PrefixGet 前缀批量查询
 func (lec *LeaseEtcdClient) PrefixGet(ctx context.Context, prefix string) (map[string]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, OpTimeout)
 	defer cancel()
@@ -315,7 +329,7 @@ func (lec *LeaseEtcdClient) PrefixGet(ctx context.Context, prefix string) (map[s
 	return ret, nil
 }
 
-// WatchPrefix 监听指定前缀，带指数退避重试
+// WatchPrefix 监听指定前缀，带指数退避重试（可中断）
 func (lec *LeaseEtcdClient) WatchPrefix(prefix string, handler cconst.UpdateEtcdHandler) {
 	lec.wg.Add(1)
 	go func() {
@@ -358,12 +372,10 @@ func (lec *LeaseEtcdClient) WatchPrefix(prefix string, handler cconst.UpdateEtcd
 			} else {
 				retryDelay = WatchRetryBaseMs
 			}
-			select {
-			case <-lec.globalCtx.Done():
+			// 可中断退避
+			if !lec.sleepWithContext(time.Duration(retryDelay) * time.Millisecond) {
 				return
-			default:
 			}
-			time.Sleep(time.Duration(retryDelay) * time.Millisecond)
 		}
 	}()
 }
@@ -371,12 +383,9 @@ func (lec *LeaseEtcdClient) WatchPrefix(prefix string, handler cconst.UpdateEtcd
 // Close 优雅关闭
 func (lec *LeaseEtcdClient) Close() error {
 	lec.log.Info("start close lease etcd client")
-	// 1. 发出关闭信号，终止所有循环
 	lec.globalCancel()
-	// 2. 等待所有协程全部退出
 	lec.wg.Wait()
 
-	// 3. 主动撤销租约
 	lec.mu.Lock()
 	leaseID := lec.leaseID
 	lec.mu.Unlock()
@@ -387,7 +396,6 @@ func (lec *LeaseEtcdClient) Close() error {
 		lec.log.Warn("revoke lease failed", zap.Int64("leaseID", int64(leaseID)), zap.Error(err))
 	}
 
-	// 4. 关闭底层连接
 	err := lec.client.Close()
 	if err != nil {
 		lec.log.Error("close raw etcd client failed", zap.Error(err))
@@ -401,11 +409,9 @@ func (lec *LeaseEtcdClient) RegisterGrpcServerInfo(ctx context.Context, info *Et
 	if info == nil {
 		return fmt.Errorf("info is nil")
 	}
-	clog := lec.log
 	target := info.Target
 	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
-		clog.Error("get endpoint manager failed", zap.String("target", target), zap.Error(err))
 		return err
 	}
 
@@ -417,15 +423,13 @@ func (lec *LeaseEtcdClient) RegisterGrpcServerInfo(ctx context.Context, info *Et
 	key := lec.getEndPointKey(target, addr)
 	err = mgr.AddEndpoint(ctx, key, endpoints.Endpoint{Addr: addr, Metadata: info.Meta}, clientv3.WithLease(leaseID))
 	if err != nil {
-		clog.Error("grpc server register failed", zap.String("target", target), zap.String("addr", addr))
 		return err
 	}
 	lec.etcdEndPointServerInfo.Store(key, info)
-	clog.Info("grpc server register success", zap.String("target", target), zap.String("addr", addr))
+	lec.log.Info("grpc server register success", zap.String("target", target), zap.String("addr", addr))
 	return nil
 }
 
-// GetEndPointMgr 如果没有创建
 func (lec *LeaseEtcdClient) GetEndPointMgr(target string) (endpoints.Manager, error) {
 	v, ok := lec.etcdGrpcServerManager.Load(target)
 	if !ok {
@@ -449,13 +453,11 @@ func (lec *LeaseEtcdClient) UnRegisterGrpcServerInfo(target, address string) err
 	defer cancel()
 	key := lec.getEndPointKey(target, address)
 	lec.etcdEndPointServerInfo.Delete(key)
-
 	mgr, err := lec.GetEndPointMgr(target)
 	if err != nil {
 		return err
 	}
-	err = mgr.DeleteEndpoint(ctx, key)
-	return err
+	return mgr.DeleteEndpoint(ctx, key)
 }
 
 func (lec *LeaseEtcdClient) GetGRpcPointEndList(ctx context.Context, target string) (endpoints.Key2EndpointMap, error) {
@@ -466,6 +468,7 @@ func (lec *LeaseEtcdClient) GetGRpcPointEndList(ctx context.Context, target stri
 	return mgr.List(ctx)
 }
 
+// WatcherEndPointMgr 监听端点变化（可中断）
 func (lec *LeaseEtcdClient) WatcherEndPointMgr(target string, handler cconst.UpdateEtcdEndPointGrpcHandler) {
 	clog := lec.log
 	mgr, err := lec.GetEndPointMgr(target)
@@ -495,7 +498,10 @@ func (lec *LeaseEtcdClient) WatcherEndPointMgr(target string, handler cconst.Upd
 			ch, er := mgr.NewWatchChannel(lec.globalCtx)
 			if er != nil {
 				clog.Error("create watch channel err", zap.Error(er))
-				time.Sleep(time.Duration(retryDelay) * time.Millisecond)
+				// 可中断退避
+				if !lec.sleepWithContext(time.Duration(retryDelay) * time.Millisecond) {
+					return
+				}
 				retryDelay = min(retryDelay*2, WatchRetryMaxMs)
 				continue
 			}
