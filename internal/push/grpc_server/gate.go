@@ -94,6 +94,7 @@ func (gc *GateConn) recvLoop() error {
 
 		req, err := gc.stream.Recv()
 		if err != nil {
+			gc.clog.Error("gate conn recv error", zap.Error(err))
 			return err
 		}
 
