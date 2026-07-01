@@ -172,9 +172,12 @@ func (gs *PushServer) OnPushMessage(msg *pb_service.PushToGate) {
 
 func (gs *PushServer) Close() {
 	gs.cancel()
+	clog := gs.clog
+	clog.Info("[GatePushServer] game grpc client pool shutdown complete start")
 	for _, pc := range gs.pushClients {
 		pc.Close()
 	}
+	clog.Info("[GatePushServer] game grpc client pool shutdown complete start 2")
 	gs.wg.Wait()
 	gs.clog.Info("[GatePushServer] gate grpc client pool shutdown complete")
 }

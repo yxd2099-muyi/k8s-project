@@ -410,8 +410,9 @@ func (s *GateService) Shutdown(ctx context.Context) error {
 
 	s.clog.Info("Shutdown step5: game grpc client pool shutdown complete")
 	s.gClient.Close()
-
+	s.clog.Info("Shutdown step6: game grpc client pool shutdown complete")
 	s.pusServer.Close()
+	s.clog.Info("Shutdown step7: game grpc client pool shutdown complete")
 	// 步骤6：设置超时等待所有wg协程退出，解决永久阻塞卡死
 	waitDone := make(chan struct{}, 1)
 	go func() {
@@ -429,7 +430,7 @@ func (s *GateService) Shutdown(ctx context.Context) error {
 		s.clog.Error("Shutdown step6: outer context canceled while waiting wg")
 		return ctx.Err()
 	}
-
+	s.clog.Info("Shutdown step7: all background goroutine exited normally")
 	// 步骤7：关闭redis连接（按需开启）
 	//if err := s.redisCli.Close(); err != nil {
 	//	s.clog.Error("Shutdown step7: redis client close error", zap.Error(err))

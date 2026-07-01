@@ -42,7 +42,7 @@ endpoints = [
     "http://127.0.0.1:2379",
 ]
 dialTimeout =10 #连接超时(秒)
-ttl=120 #租约时间(秒)
+ttl=1200 #租约时间(秒)
 keepAliveInterval=5 #续约间隔(秒)
 username  ="" #用户名
 password  ="" #密码

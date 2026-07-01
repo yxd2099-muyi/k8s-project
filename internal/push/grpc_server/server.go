@@ -21,6 +21,7 @@ type PushServer struct {
 	eventCh   chan *pb_service.PushEvent
 	workerNum int
 	clog      *zap.Logger
+	gateConns []*GateConn
 }
 
 func NewPushServer(workerNum int) *PushServer {
@@ -50,15 +51,19 @@ func (s *PushServer) SendPushEvents(stream pb_service.PushService_SendPushEvents
 	}()
 
 	for {
+		select {
+		case <-stream.Context().Done():
+			return stream.Context().Err()
+		default:
+		}
+
 		evt, err := stream.Recv()
 		if err != nil {
-			// ✅ 修复：用标准库判断EOF，禁止字符串比对
 			if errors.Is(err, io.EOF) {
 				resp := &pb_service.PushResponse{
 					Success: true,
 					Msg:     "ok",
 				}
-				// 回包完成RPC握手
 				if errSend := stream.SendAndClose(resp); errSend != nil {
 					clog.Warn("SendAndClose failed", zap.Error(errSend))
 				}
@@ -109,7 +114,6 @@ func (s *PushServer) pushWorker() {
 				return
 			}
 
-			// 复用map减少GC
 			for k := range gateMap {
 				delete(gateMap, k)
 			}
@@ -134,6 +138,7 @@ func (s *PushServer) pushWorker() {
 	}
 }
 
+// 【核心修复】父上下文改为 stream.Context()，不再依赖服务全局ctx
 func (s *PushServer) PushStream(stream pb_service.PushService_PushStreamServer) error {
 	defer func() {
 		if r := recover(); r != nil {
@@ -142,14 +147,26 @@ func (s *PushServer) PushStream(stream pb_service.PushService_PushStreamServer) 
 				zap.String("stack", string(debug.Stack())))
 		}
 	}()
-	gc := NewGateConn(stream, s.router, s.ctx)
-	return gc.Handle()
+	// 旧：s.ctx
+	// 新：使用流自带上下文，gRPC关闭流自动触发取消
+	gc := NewGateConn(stream, s.router)
+
+	//s.gateConns = append(s.gateConns, gc)
+	err := gc.Handle()
+	if err != nil {
+		s.clog.Error("PushStream Handle", zap.Error(err))
+	}
+	return err
 }
 
 func (s *PushServer) Close() {
+	s.clog.Info("PushServer close start")
 	s.cancel()
 	close(s.eventCh)
 	s.wg.Wait()
 	s.router.Close()
+	//for _, gc := range s.gateConns {
+	//	gc.Close()
+	//}
 	s.clog.Info("pushserver graceful closed")
 }

@@ -11,7 +11,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
 	"net"
-	"os"
 	"sync"
 	"time"
 )
@@ -22,13 +21,14 @@ type ServerInfo struct {
 	target              string
 }
 type PushService struct {
-	grpcSrv *grpc.Server
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
-	etcdCli *etcdx.LeaseEtcdClient
-	sInfo   ServerInfo
-	clog    *zap.Logger
+	grpcSrv    *grpc.Server
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	etcdCli    *etcdx.LeaseEtcdClient
+	sInfo      ServerInfo
+	clog       *zap.Logger
+	pushServer *grpc_server.PushServer
 }
 
 func NewPushService() *PushService {
@@ -54,18 +54,19 @@ func NewPushService() *PushService {
 func (s *PushService) Start() error {
 	clog := s.clog
 	kaep := keepalive.EnforcementPolicy{
-		MinTime:             30 * time.Second, // 允许客户端最快每 10s 发一次 PING（默认 5min 很严格）
-		PermitWithoutStream: true,             // 允许无 RPC 时也发 PING（关键！如果客户端开了这个，这里必须也开）
+		MinTime:             30 * time.Second,
+		PermitWithoutStream: true,
 	}
 	s.grpcSrv = grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(kaep),
 	)
 	svr := grpc_server.NewPushServer(10)
+	s.pushServer = svr
 	pb_service.RegisterPushServiceServer(s.grpcSrv, svr)
 	addr := s.sInfo.grpcAddress
 	target := s.sInfo.target
 	registerAddr := s.sInfo.registerGrpcAddress
-	err := s.registerInfoForRpcEndPoint(target, registerAddr) // 注册etcd
+	err := s.registerInfoForRpcEndPoint(target, registerAddr)
 	if err != nil {
 		clog.Error(err.Error())
 		return err
@@ -73,18 +74,19 @@ func (s *PushService) Start() error {
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		//lis, err := net.Listen("tcp", fmt.Sprintf(":%s", s.cfg.Port))
 		lis, err := net.Listen("tcp", addr)
 		if err != nil {
 			panic(err)
 		}
+		clog.Info("grpc server start listen", zap.String("addr", addr))
 		err = s.grpcSrv.Serve(lis)
 		if err != nil {
-			os.Exit(1)
+			clog.Warn("grpc serve exited", zap.Error(err))
 		}
 	}()
 	return nil
 }
+
 func (s *PushService) registerInfoForRpcEndPoint(target, address string) error {
 	clog := s.clog
 	info := &etcdx.EtcdServerInfo{}
@@ -99,15 +101,88 @@ func (s *PushService) registerInfoForRpcEndPoint(target, address string) error {
 	}
 	return nil
 }
+
+//	func (s *PushService) Shutdown() {
+//		clog := s.clog
+//		clog.Info("=============================PushService Shutdown BEGIN=============================================")
+//		s.pushServer.Close()
+//		// 【关键1】先停止grpc服务，再cancel上下文，顺序不能颠倒
+//		// 设置10秒超时，防止永久阻塞
+//		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+//		defer stopCancel()
+//
+//		ch := make(chan struct{}, 1)
+//		go func() {
+//			clog.Info("begin grpc GracefulStop")
+//			s.grpcSrv.GracefulStop()
+//			ch <- struct{}{}
+//		}()
+//
+//		select {
+//		case <-ch:
+//			clog.Info("=============================PushService Shutdown2 grpc GracefulStop complete=============================================")
+//		case <-stopCtx.Done():
+//			// 超时还有僵死连接，强制断开所有连接
+//			clog.Warn("GracefulStop timeout, force stop grpc server")
+//			s.grpcSrv.Stop()
+//		}
+//
+//		// 【关键2】再取消全局上下文，关闭内部所有业务协程
+//		s.cancel()
+//
+//		// 反注册etcd节点
+//		target := s.sInfo.target
+//		addr := s.sInfo.registerGrpcAddress
+//		err := s.etcdCli.UnRegisterGrpcServerInfo(target, addr)
+//		if err != nil {
+//			s.clog.Error("unregister game service failed", zap.Error(err))
+//		} else {
+//			s.clog.Debug("unregister game service success")
+//		}
+//
+//		// 等待主Serve协程退出
+//		s.wg.Wait()
+//		s.clog.Debug("push service shutdown success")
+//	}
 func (s *PushService) Shutdown() {
+	clog := s.clog
+	clog.Info("=============================PushService Shutdown BEGIN=============================================")
+
+	// ======【最重要调换顺序】先关闭gRPC，让所有双向流自动退出 ======
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer stopCancel()
+
+	ch := make(chan struct{}, 1)
+	go func() {
+		clog.Info("begin grpc GracefulStop")
+		//s.grpcSrv.GracefulStop()
+		s.grpcSrv.Stop()
+		ch <- struct{}{}
+	}()
+
+	select {
+	case <-ch:
+		clog.Info("=============================PushService Shutdown2 grpc GracefulStop complete=============================================")
+	case <-stopCtx.Done():
+		clog.Warn("GracefulStop timeout, force stop grpc server")
+		s.grpcSrv.Stop()
+	}
+
+	// ====== gRPC优雅关闭完成后，再关闭业务worker ======
+	s.pushServer.Close()
+
 	s.cancel()
-	s.grpcSrv.GracefulStop()
+
+	// 反注册etcd
 	target := s.sInfo.target
 	addr := s.sInfo.registerGrpcAddress
 	err := s.etcdCli.UnRegisterGrpcServerInfo(target, addr)
 	if err != nil {
 		s.clog.Error("unregister game service failed", zap.Error(err))
+	} else {
+		s.clog.Debug("unregister game service success")
 	}
+
 	s.wg.Wait()
 	s.clog.Debug("push service shutdown success")
 }
