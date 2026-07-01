@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"github.com/k8s/muyi/api/etcdapi"
 	"github.com/k8s/muyi/api/model"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
@@ -78,7 +79,7 @@ func (s *GateService) wathRoomServerInfoEndPoint() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	clog := s.clog
-	target := etcdx.GetEtcdRoomServerTarget()
+	target := etcdapi.GetEtcdRoomServerTarget()
 	e, err := s.etcdCli.GetGRpcPointEndList(ctx, target)
 	if err != nil {
 		s.clog.Error("watch room server info failed", zap.Error(err))
@@ -116,20 +117,16 @@ func (s *GateService) Start() error {
 	}
 	// grpc ConnClient
 	gcfg := grpcx.DefaultClientConfig()
-	target := etcdx.GetEtcdRoomServerTarget()
+	target := etcdapi.GetEtcdRoomServerTarget()
 	gcfg.Target = target
 	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBTargetDirect)
-	//gcfg.LBPolicy = "target_direct"
-	//gcfg.LBPolicy = string(cconst.LBRoundRobin)
-	//gcfg.LBPolicy = "round_robin"
 	gcli, err := grpcx.NewGrpcClient(gcfg, etcdCli.GetClient())
 	if err != nil {
 		clog.Error("watch room server info failed", zap.Error(err))
 		return err
 	}
 	s.gClient = gcli
-	//pb_service.NewGameLogicClient(conn)
 	clog.Info("watch room server info", zap.Any("gcli", gcli))
 	s.gameLogicClient = pb_service.NewGameLogicClient(gcli.Conn())
 	// 1. 启动gate grpc服务（game调用推送）

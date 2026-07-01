@@ -2,6 +2,7 @@ package sender
 
 import (
 	"context"
+	"github.com/k8s/muyi/api/etcdapi"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_push "github.com/k8s/muyi/api/pb/push"
 	pb_service "github.com/k8s/muyi/api/pb/service"
@@ -31,7 +32,7 @@ const (
 
 func InitPushSender() (*PushSender, error) {
 	gcfg := grpcx.DefaultClientConfig()
-	target := etcdx.GetEtcdPushServerTarget()
+	target := etcdapi.GetEtcdPushServerTarget()
 	gcfg.Target = target
 	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBRoundRobin)

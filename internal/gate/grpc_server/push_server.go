@@ -2,6 +2,7 @@ package grpc_server
 
 import (
 	"context"
+	"github.com/k8s/muyi/api/etcdapi"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/gate/common"
@@ -51,7 +52,7 @@ func (gs *PushServer) watchPushServer() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	clog := gs.clog
-	target := etcdx.GetEtcdPushServerTarget()
+	target := etcdapi.GetEtcdPushServerTarget()
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
 	e, err := etcdCli.GetGRpcPointEndList(ctx, target)
 	if err != nil {

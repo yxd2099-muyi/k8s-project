@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/k8s/muyi/api/etcdapi"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/internal/game/grpc_server"
@@ -11,7 +12,6 @@ import (
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
-	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -83,27 +83,6 @@ func (s *GameService) registerInfoForRpcEndPoint() error {
 	}
 	return nil
 }
-func (s *GameService) registerPodInfo() error {
-	podRoomInfo := s.rangeCalc.GetGameNode()
-	clog := s.clog
-	clog.Info("game service init success", zap.Any("pod_room_info", podRoomInfo))
-	podRoomInfoStr, err := serializer.EncodeJson(&podRoomInfo)
-	if err != nil {
-		clog.Error("serializer game service failed", zap.Error(err))
-		return err
-	}
-	etcdKey := etcdx.GetEtcdRoomServerKey(podRoomInfo.GrpcAddr)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	err = s.etcdCli.Register(ctx, etcdKey, string(podRoomInfoStr))
-	if err != nil {
-		clog.Error("register game service failed", zap.Error(err))
-		return err
-	}
-	s.grpcEtcdKey = etcdKey
-	return nil
-}
 func (s *GameService) Start() error {
 	kaep := keepalive.EnforcementPolicy{
 		MinTime:             30 * time.Second, // 允许客户端最快每 10s 发一次 PING（默认 5min 很严格）
@@ -118,7 +97,7 @@ func (s *GameService) Start() error {
 	)
 	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc)
 	pb_service.RegisterGameLogicServer(s.grpcSrv, logicSrv)
-	target := etcdx.GetEtcdRoomServerTarget()
+	target := etcdapi.GetEtcdRoomServerTarget()
 	s.target = target
 	err := s.registerInfoForRpcEndPoint() // 如果注册直接key, value 使用另外一种方式 todo
 	if err != nil {

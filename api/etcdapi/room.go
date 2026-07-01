@@ -1,4 +1,4 @@
-package etcdx
+package etcdapi
 
 import (
 	"fmt"
@@ -13,15 +13,18 @@ import (
 // subType serverType 的子类型  比如对于gate server 会作为websocket server , 也有可能作为grpc server 那这个值就是grpc
 // eg:   k8s-project/dev/gate/ws
 
-func GetPushServerInfoTarget(projectName, env, serverType, subType string) string {
+func GetRoomServerInfoTarget(projectName, env, serverType, subType string) string {
 	return fmt.Sprintf("%s/%s/%s/%s", projectName, env, serverType, subType) // 注意这里 前面不能加 /
 }
 
-func GetEtcdPushServerTarget() string {
+// GetRoomInfoEtcdKey 获取房间服务etcd 对应的key
+// eg: k8s-project/dev/gate/ws/172.16.111.60:9000
+
+func GetEtcdRoomServerTarget() string {
 	cfg := config.GlobalConf
 	serverinfo := cfg.ServerInfo
 	project := serverinfo.ProjectName
 	env := serverinfo.Env
-	target := GetPushServerInfoTarget(project, env, cconst.ServerTypePush, cconst.ServerTypePushSubGRpc)
+	target := GetRoomServerInfoTarget(project, env, cconst.ServerTypeRoom, cconst.ServerTypeRoomSubGRpc)
 	return target
 }

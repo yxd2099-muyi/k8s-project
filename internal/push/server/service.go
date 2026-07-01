@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"github.com/k8s/muyi/api/etcdapi"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/internal/push/common"
 	"github.com/k8s/muyi/internal/push/grpc_server"
@@ -41,7 +42,7 @@ func NewPushService() *PushService {
 	obj.cancel = cancel
 	obj.clog = clog
 	addr := common.GetArgConfig().GRpcAddr
-	target := etcdx.GetEtcdPushServerTarget()
+	target := etcdapi.GetEtcdPushServerTarget()
 	registerAddr := common.GetArgConfig().RegisterAddr
 	info := ServerInfo{}
 	info.grpcAddress = addr
