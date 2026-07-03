@@ -189,24 +189,24 @@ func (c *Consumer) consumeLoop(id int) {
 		}
 	}
 }
-
+func (c *Consumer) getHandler(handlerKey string) (Handler, bool) {
+	c.mu.RLock()
+	// 可扩展支持 Tag 精准匹配: handlerKey = msg.Topic + ":" + msg.GetTag()
+	handler, exists := c.handlers[handlerKey]
+	c.mu.RUnlock()
+	return handler, exists
+}
 func (c *Consumer) processMessage(msg *rmq.MessageView) {
 	clog := c.clog
 	clog.Debug("process message", zap.Any("msg", msg))
-	c.mu.RLock()
 	handlerKey := msg.GetTopic()
-	// 可扩展支持 Tag 精准匹配: handlerKey = msg.Topic + ":" + msg.GetTag()
-
-	handler, exists := c.handlers[handlerKey]
-	c.mu.RUnlock()
-
+	handler, exists := c.getHandler(handlerKey)
 	if !exists {
 		clog.Warn("no handler for topic", zap.String("topic", handlerKey))
 		_ = c.simpleConsumer.Ack(context.Background(), msg)
 		return
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
 	defer cancel()
 
 	if err := handler(ctx, msg); err != nil {
