@@ -3,8 +3,10 @@ package grpc_server
 import (
 	"context"
 	"errors"
+	rmq "github.com/apache/rocketmq-clients/golang/v5"
 	pb_service "github.com/k8s/muyi/api/pb/service"
 	"github.com/k8s/muyi/shared/infra/logger"
+	"github.com/k8s/muyi/shared/infra/mq"
 	"go.uber.org/zap"
 	"io"
 	"runtime/debug"
@@ -14,31 +16,53 @@ import (
 
 type PushServer struct {
 	pb_service.UnimplementedPushServiceServer
-	ctx       context.Context
-	cancel    context.CancelFunc
-	wg        sync.WaitGroup
-	router    *Router
-	eventCh   chan *pb_service.PushEvent
-	workerNum int
-	clog      *zap.Logger
-	gateConns []*GateConn
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
+	router     *Router
+	eventCh    chan *pb_service.PushEvent
+	workerNum  int
+	clog       *zap.Logger
+	gateConns  []*GateConn
+	mqConsumer *mq.Consumer // 这个地方可以是一个接口 TODO
 }
 
-func NewPushServer(workerNum int) *PushServer {
+func NewPushServer(workerNum int) (*PushServer, error) {
 	ctx, cancel := context.WithCancel(context.Background())
+	clog := logger.L
 	s := &PushServer{
 		ctx:       ctx,
 		cancel:    cancel,
 		router:    NewRouter(),
 		eventCh:   make(chan *pb_service.PushEvent, 10000),
 		workerNum: workerNum,
-		clog:      logger.L,
+		clog:      clog,
 	}
+	consumer, err := mq.NewConsumer("chat-push") // todo  明天公用地方
+	if err != nil {
+		clog.Error("NewConsumer error", zap.Error(err))
+		return nil, err
+	}
+	err = consumer.Start()
+	if err != nil {
+		clog.Error("Start error", zap.Error(err))
+		return nil, err
+	}
+	consumer.RegisterHandler("chat-push", "chat", s.HandlerPushMQ) //todo 注册这个可以做成全局的， 这里循环读 别处init 做， 这里循环读
+	s.mqConsumer = consumer
 	for i := 0; i < workerNum; i++ {
 		s.wg.Add(1)
 		go s.pushWorker()
 	}
-	return s
+
+	return s, nil
+}
+
+// 处理MQ 中的消息
+func (s *PushServer) HandlerPushMQ(ctx context.Context, msg *rmq.MessageView) error {
+	clog := s.clog
+	clog.Debug("push msg start", zap.Any("msg", msg))
+	return nil
 }
 
 // SendPushEvents 接收GameServer客户端流
@@ -151,7 +175,6 @@ func (s *PushServer) PushStream(stream pb_service.PushService_PushStreamServer) 
 	// 新：使用流自带上下文，gRPC关闭流自动触发取消
 	gc := NewGateConn(stream, s.router)
 
-	//s.gateConns = append(s.gateConns, gc)
 	err := gc.Handle()
 	if err != nil {
 		s.clog.Error("PushStream Handle", zap.Error(err))
@@ -163,6 +186,7 @@ func (s *PushServer) Close() {
 	s.clog.Info("PushServer close start")
 	s.cancel()
 	close(s.eventCh)
+	s.mqConsumer.GracefulStop()
 	s.wg.Wait()
 	s.router.Close()
 	//for _, gc := range s.gateConns {

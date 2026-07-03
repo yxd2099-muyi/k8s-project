@@ -36,12 +36,19 @@ type Conf struct {
 	Game       Game       `mapstructure:"game"`
 	Web        Web        `mapstructure:"web"`
 	Push       Push       `mapstructure:"push"`
+	RocketMq   RocketMq   `mapstructure:"rocketmq"`
 }
 
 func GetConfig() Conf {
 	return GlobalConf
 }
 
+type RocketMq struct {
+	Endpoint     string `mapstructure:"endpoint"`
+	Namespace    string `mapstructure:"namespace"`
+	AccessKey    string `mapstructure:"accessKey"`
+	AccessSecret string `mapstructure:"accessSecret"`
+}
 type ServerInfo struct {
 	ProjectName string `mapstructure:"projectName"`
 	ServerId    string `mapstructure:"serverId"`

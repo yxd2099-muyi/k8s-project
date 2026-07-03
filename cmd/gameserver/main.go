@@ -11,6 +11,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/env"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
+	"github.com/k8s/muyi/shared/infra/mq"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
 	"log"
@@ -61,6 +62,12 @@ func main() {
 		return
 	}
 	defer gameSvc.Shutdown()
+	producer, err := mq.InitProducer()
+	if err != nil {
+		clog.Error("init producer failed", zap.Error(err))
+		return
+	}
+	defer producer.Close()
 	clog.Info("===============================game server success==============================================")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)

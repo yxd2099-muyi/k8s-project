@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"fmt"
+	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
 	"strings"
@@ -43,7 +44,12 @@ type Consumer struct {
 }
 
 // NewConsumer 创建消费对象
-func NewConsumer(cfg MQConfig, consumerGroup string, opts ...ConsumerOption) (*Consumer, error) {
+func NewConsumer(consumerGroup string, opts ...ConsumerOption) (*Consumer, error) {
+	mqcfg := config.GetConfig().RocketMq
+	cfg := MQConfig{}
+	cfg.Endpoint = mqcfg.Endpoint
+	cfg.AccessKey = mqcfg.AccessKey
+	cfg.AccessSecret = mqcfg.AccessSecret
 	c := &Consumer{
 		config:             cfg,
 		consumerGroup:      consumerGroup,

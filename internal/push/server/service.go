@@ -61,13 +61,17 @@ func (s *PushService) Start() error {
 	s.grpcSrv = grpc.NewServer(
 		grpc.KeepaliveEnforcementPolicy(kaep),
 	)
-	svr := grpc_server.NewPushServer(10)
+	svr, err := grpc_server.NewPushServer(10)
+	if err != nil {
+		clog.Error("grpc server init error", zap.Error(err))
+		return err
+	}
 	s.pushServer = svr
 	pb_service.RegisterPushServiceServer(s.grpcSrv, svr)
 	addr := s.sInfo.grpcAddress
 	target := s.sInfo.target
 	registerAddr := s.sInfo.registerGrpcAddress
-	err := s.registerInfoForRpcEndPoint(target, registerAddr)
+	err = s.registerInfoForRpcEndPoint(target, registerAddr)
 	if err != nil {
 		clog.Error(err.Error())
 		return err

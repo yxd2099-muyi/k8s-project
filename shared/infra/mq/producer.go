@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"fmt"
+	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
 	"sync"
@@ -15,7 +16,6 @@ import (
 type MQConfig struct {
 	Endpoint      string `validate:"required"`
 	NameSpace     string
-	ConsumerGroup string
 	AccessKey     string `json:"accessKey" validate:"required"`
 	AccessSecret  string `json:"accessSecret" validate:"required"`
 	SecurityToken string `json:"securityToken"`
@@ -33,13 +33,14 @@ type Producer struct {
 var globalProducer = &Producer{}
 
 // InitProducer 获取全局生产者（单例并发安全）
-func InitProducer(mqCfg *MQConfig) (*Producer, error) {
+func InitProducer() (*Producer, error) {
+	gcfg := config.GetConfig().RocketMq
 	cfg := &rmq.Config{}
-	cfg.Endpoint = mqCfg.Endpoint
-	cfg.NameSpace = mqCfg.NameSpace
+	cfg.Endpoint = gcfg.Endpoint
+	cfg.NameSpace = gcfg.Namespace
 	cfg.Credentials = &credentials.SessionCredentials{
-		AccessKey:    mqCfg.AccessKey,
-		AccessSecret: mqCfg.AccessSecret,
+		AccessKey:    gcfg.AccessKey,
+		AccessSecret: gcfg.AccessSecret,
 	}
 	opts := []rmq.ProducerOption{
 		rmq.WithTopics("uouo"),
@@ -103,6 +104,9 @@ func (p *Producer) Close() error {
 		return nil
 	}
 	err := p.client.GracefulStop()
+	if err != nil {
+		p.clog.Error("fail to close producer", zap.Error(err))
+	}
 	p.clog.Info("mq producer graceful stop complete")
 	return err
 }
