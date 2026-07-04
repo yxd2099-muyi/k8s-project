@@ -17,7 +17,7 @@ import (
 
 const (
 	// Gate网关地址
-	gateHost = "172.16.111.60:8090"
+	gateHost = "172.16.111.60:2200"
 	//gateHost = "127.0.0.1:8090"
 	wsPath = "/ws"
 	// 读写超时

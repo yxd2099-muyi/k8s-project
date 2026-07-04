@@ -1,10 +1,16 @@
 package handler
 
 import (
+	"context"
 	pb_push "github.com/k8s/muyi/api/pb/push"
 	pb_room "github.com/k8s/muyi/api/pb/room"
 	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/internal/game/sender"
+	"github.com/k8s/muyi/shared/infra/cconst"
+	"github.com/k8s/muyi/shared/infra/mq"
+	"github.com/k8s/muyi/shared/kit/serializer"
+	"go.uber.org/zap"
+	"time"
 )
 
 func NewRoomHandler() {
@@ -22,7 +28,17 @@ func (c *HandlerRoom) Create(ctx *common.TContext, req []byte, room common.IRoom
 	p := &pb_push.PushChat{Content: "HandlerRoom hello world"}
 	//push.SinglePushUser(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
 	//room.SinglePush(clog, uId, pb_push.CmdPushKind_Cmd_Chat, p)
+	//one := sender.GetPushEvent(uId, []uint64{uId}, pb_push.CmdPushKind_Cmd_Chat, p)
+	//sender.PushEvent(one)
+	ctx1, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
 	one := sender.GetPushEvent(uId, []uint64{uId}, pb_push.CmdPushKind_Cmd_Chat, p)
-	sender.PushEvent(one)
+	payload, _ := serializer.EncodeProto(one)
+	// Send(ctx context.Context, topic, tag, key, messageGroup string, body []byte)
+	err := mq.Send(ctx1, cconst.TopicPushEvents, cconst.TagPushEventChat, one.EventId, "gid", payload)
+	if err != nil {
+		clog.Error("Create mq send error", zap.Error(err))
+	}
+	//TopicPushEvents
 	return nil, nil
 }

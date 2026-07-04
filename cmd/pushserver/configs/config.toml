@@ -47,11 +47,11 @@ username  ="" #用户名
 password  ="" #密码
 
 [rocketmq]
-endpoint="127.0.0.1:2379"
+endpoint="172.16.111.60:8081"
 namespace=""
 accessKey=""
 accessSecret=""
 
 
 [push]
-port="9100" # 当前服务的端口号，k8s 中同一种服务这些端口号一样 web 8088 gate 8090 game 9000 push 9100
+port="4100" # 当前服务的端口号，k8s 中同一种服务这些端口号一样

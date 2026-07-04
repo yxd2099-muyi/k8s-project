@@ -47,8 +47,8 @@ keepAliveInterval=5 #续约间隔(秒)
 username  ="" #用户名
 password  ="" #密码
 [gate]
-ws_port="8090" # 当前服务的端口号，k8s 中同一种服务这些端口号一样 web 8088 gate 8090 game 9000
-grpc_port="8099" #
+ws_port="2200" # 当前服务的端口号，k8s 中同一种服务这些端口号一样
+grpc_port="2300" #
 redis_expire = 3600 # 单位秒 用户在线信息过期时间
 sync_interval= 1800 # 单位秒 定时同步redis间隔 < expire
 ping_interval = 30 # 秒 ping下发间隔

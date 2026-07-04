@@ -3,6 +3,7 @@ package mq
 import (
 	"context"
 	"fmt"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
@@ -43,7 +44,7 @@ func InitProducer() (*Producer, error) {
 		AccessSecret: gcfg.AccessSecret,
 	}
 	opts := []rmq.ProducerOption{
-		rmq.WithTopics("uouo"),
+		rmq.WithTopics(cconst.TopicPushEvents),
 	}
 	var err error
 	var producer rmq.Producer
@@ -85,7 +86,10 @@ func (p *Producer) SendMsg(ctx context.Context, topic, tag, key, messageGroup st
 	}
 	msg.SetTag(tag)
 	msg.SetKeys(key)
-	msg.SetMessageGroup(messageGroup)
+	if messageGroup != "" {
+		msg.SetMessageGroup(messageGroup) // 这行主动会设置分组顺序
+	}
+
 	res, err := p.client.Send(ctx, msg)
 	if err != nil {
 		p.clog.Error("fail to send message", zap.Error(err))
@@ -112,7 +116,8 @@ func (p *Producer) Close() error {
 }
 
 func Send(ctx context.Context, topic, tag, key, messageGroup string, body []byte) error {
-	err := globalProducer.SendMsg(ctx, topic, tag, key, messageGroup, body)
+	//err := globalProducer.SendMsg(ctx, topic, tag, key, messageGroup, body)
+	err := globalProducer.SendMsg(ctx, topic, tag, key, "", body)
 	if err != nil {
 		return err
 	}

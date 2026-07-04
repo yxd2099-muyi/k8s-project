@@ -5,8 +5,10 @@ import (
 	"errors"
 	rmq "github.com/apache/rocketmq-clients/golang/v5"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/mq"
+	"github.com/k8s/muyi/shared/kit/serializer"
 	"go.uber.org/zap"
 	"io"
 	"runtime/debug"
@@ -38,17 +40,18 @@ func NewPushServer(workerNum int) (*PushServer, error) {
 		workerNum: workerNum,
 		clog:      clog,
 	}
-	consumer, err := mq.NewConsumer("chat-push") // todo  明天公用地方
+	consumer, err := mq.NewConsumer(cconst.ConsumerGroupChat)
 	if err != nil {
 		clog.Error("NewConsumer error", zap.Error(err))
 		return nil, err
 	}
+	consumer.RegisterHandler(cconst.TopicPushEvents, cconst.TagPushEventChat, s.HandlerPushMQ) //todo 注册这个可以做成全局的， 这里循环读 别处init 做， 这里循环读
 	err = consumer.Start()
 	if err != nil {
 		clog.Error("Start error", zap.Error(err))
 		return nil, err
 	}
-	consumer.RegisterHandler("chat-push", "chat", s.HandlerPushMQ) //todo 注册这个可以做成全局的， 这里循环读 别处init 做， 这里循环读
+
 	s.mqConsumer = consumer
 	for i := 0; i < workerNum; i++ {
 		s.wg.Add(1)
@@ -61,7 +64,38 @@ func NewPushServer(workerNum int) (*PushServer, error) {
 // 处理MQ 中的消息
 func (s *PushServer) HandlerPushMQ(ctx context.Context, msg *rmq.MessageView) error {
 	clog := s.clog
-	clog.Debug("push msg start", zap.Any("msg", msg))
+	defer func() {
+		if err := recover(); err != nil {
+			clog.Error("Handler PushMQ panic", zap.Any("err", err))
+			stack := string(debug.Stack())
+			clog.Error("handler panic recover",
+				zap.Any("panic_reason", err),
+				zap.String("stack", stack),
+			)
+		}
+	}()
+
+	body := msg.GetBody()
+	if len(body) == 0 {
+		return nil
+	}
+	var event pb_service.PushEvent
+	err := serializer.DecodeProto(body, &event)
+	if err != nil {
+		clog.Error("DecodeProto error", zap.Error(err))
+		return err
+	}
+	evt := &event
+	clog.Debug("push msg end", zap.Any("evt", evt))
+	select {
+	case s.eventCh <- evt:
+		clog.Debug("HandlerPushMQ recv push event", zap.String("event_id", evt.EventId))
+	case <-s.ctx.Done():
+		clog.Info("HandlerPushMQ server context cancel, exit stream")
+		return s.ctx.Err()
+	default:
+		clog.Warn(" HandlerPushMQ eventCh full drop push event", zap.String("event_id", evt.EventId))
+	}
 	return nil
 }
 

@@ -110,8 +110,6 @@ func parseFlag() {
 	flag.BoolVar(&showVersionTime, "t", false, "显示版本编译时间")
 	flag.StringVar(&ipString, "ip", "127.0.0.1", "服务实例IP")
 	flag.StringVar(&wsPort, "wsPort", "", "websocket监听端口号")
-	//flag.StringVar(&wsPort, "wsPort", "8090", "websocket监听端口号")
-	//flag.StringVar(&grpcPort, "grpc_port", "8099", "grpc监听端口号")
 	flag.StringVar(&grpcPort, "grpc_port", "", "grpc监听端口号")
 	flag.Parse()
 	if showVersion {

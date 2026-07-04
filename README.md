@@ -95,3 +95,7 @@ game-project/
 ├─ go.sum
 └─ .gitignore
 ```
+
+# mq
+程序访问 endpoint  127.0.0.1:8081
+可视化界面 http://localhost:8080
