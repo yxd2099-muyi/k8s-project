@@ -115,9 +115,18 @@ func (p *Producer) Close() error {
 	return err
 }
 
-func Send(ctx context.Context, topic, tag, key, messageGroup string, body []byte) error {
-	//err := globalProducer.SendMsg(ctx, topic, tag, key, messageGroup, body)
+// 发送普通消息
+func SendNormal(ctx context.Context, topic, tag, key string, body []byte) error {
 	err := globalProducer.SendMsg(ctx, topic, tag, key, "", body)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// 发送顺序消息
+func SendFIFO(ctx context.Context, topic, tag, key, messageGroup string, body []byte) error {
+	err := globalProducer.SendMsg(ctx, topic, tag, key, messageGroup, body)
 	if err != nil {
 		return err
 	}

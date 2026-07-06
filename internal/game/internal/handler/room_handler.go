@@ -34,8 +34,7 @@ func (c *HandlerRoom) Create(ctx *common.TContext, req []byte, room common.IRoom
 	defer cancel()
 	one := sender.GetPushEvent(uId, []uint64{uId}, pb_push.CmdPushKind_Cmd_Chat, p)
 	payload, _ := serializer.EncodeProto(one)
-	// Send(ctx context.Context, topic, tag, key, messageGroup string, body []byte)
-	err := mq.Send(ctx1, cconst.TopicPushEvents, cconst.TagPushEventChat, one.EventId, "gid", payload)
+	err := mq.SendFIFO(ctx1, cconst.TopicPushEvents, cconst.TagPushEventChat, one.EventId, "gid", payload)
 	if err != nil {
 		clog.Error("Create mq send error", zap.Error(err))
 	}

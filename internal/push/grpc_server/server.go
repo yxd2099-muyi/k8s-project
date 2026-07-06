@@ -18,15 +18,17 @@ import (
 
 type PushServer struct {
 	pb_service.UnimplementedPushServiceServer
-	ctx        context.Context
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
-	router     *Router
-	eventCh    chan *pb_service.PushEvent
-	workerNum  int
-	clog       *zap.Logger
-	gateConns  []*GateConn
-	mqConsumer *mq.Consumer // 这个地方可以是一个接口 TODO
+	ctx       context.Context
+	cancel    context.CancelFunc
+	wg        sync.WaitGroup
+	router    *Router
+	eventCh   chan *pb_service.PushEvent
+	workerNum int
+	clog      *zap.Logger
+	gateConns []*GateConn
+	//mqConsumer *mq.Consumer // 这个地方可以是一个接口 TODO
+	//mqConsumer *mq.PushConsumer // 这个地方可以是一个接口 TODO
+	mqConsumer mq.IMQConsumer // 这个地方可以是一个接口 TODO
 }
 
 func NewPushServer(workerNum int) (*PushServer, error) {
@@ -41,6 +43,7 @@ func NewPushServer(workerNum int) (*PushServer, error) {
 		clog:      clog,
 	}
 	consumer, err := mq.NewConsumer(cconst.ConsumerGroupChat)
+	//consumer, err := mq.NewPushConsumer(cconst.ConsumerGroupChat)
 	if err != nil {
 		clog.Error("NewConsumer error", zap.Error(err))
 		return nil, err

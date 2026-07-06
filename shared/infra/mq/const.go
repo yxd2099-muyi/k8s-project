@@ -1,5 +1,10 @@
 package mq
 
+import (
+	"context"
+	rmq "github.com/apache/rocketmq-clients/golang/v5"
+)
+
 // Topic 业务topic，可扩展多业务
 const (
 	TopicChatPushEvent = "topic_chat_push_event" // 聊天推送主topic
@@ -17,32 +22,12 @@ const (
 	GroupPushServerChat = "group_push_server_chat"
 )
 
-//
-//type MQConfig struct {
-//	NameServerAddr []string // 127.0.0.1:9876
-//	Producer       ProducerConfig
-//	Consumer       ConsumerConfig
-//}
-//
-//type ProducerConfig struct {
-//	SendTimeoutMs int64 // 发送超时
-//}
-//
-//type ConsumerConfig struct {
-//	ConsumeThreadNum int // 单实例消费并发协程
-//	MaxRetryTimes    int // 消息最大重试次数
-//}
-//
-//// DefaultMQConfig 默认配置
-//func DefaultMQConfig() *MQConfig {
-//	return &MQConfig{
-//		NameServerAddr: []string{"127.0.0.1:9876"},
-//		Producer: ProducerConfig{
-//			SendTimeoutMs: 3000,
-//		},
-//		Consumer: ConsumerConfig{
-//			ConsumeThreadNum: 16,
-//			MaxRetryTimes:    3,
-//		},
-//	}
-//}
+// Handler 业务处理函数
+type Handler func(ctx context.Context, msg *rmq.MessageView) error
+
+// TopicHandler 按 Topic + Tag 注册
+type TopicHandler struct {
+	Topic   string
+	Tag     string // "*" 表示全部
+	Handler Handler
+}

@@ -14,14 +14,10 @@ import (
 	"github.com/apache/rocketmq-clients/golang/v5/credentials"
 )
 
-// Handler 业务处理函数
-type Handler func(ctx context.Context, msg *rmq.MessageView) error
-
-// TopicHandler 按 Topic + Tag 注册
-type TopicHandler struct {
-	Topic   string
-	Tag     string // "*" 表示全部
-	Handler Handler
+type IMQConsumer interface {
+	GracefulStop()
+	Start() error
+	RegisterHandler(topic, tag string, handler Handler)
 }
 
 // Consumer 封装对象
@@ -41,14 +37,9 @@ type Consumer struct {
 	clog               *zap.Logger
 }
 
-//type MQConfig struct {
-//	Endpoint     string
-//	AccessKey    string
-//	AccessSecret string
-//}
-
 // NewConsumer 创建消费对象
-func NewConsumer(consumerGroup string, opts ...ConsumerOption) (*Consumer, error) {
+func NewConsumer(consumerGroup string, opts ...ConsumerOption) (IMQConsumer, error) {
+	//func NewConsumer(consumerGroup string, opts ...ConsumerOption) (*Consumer, error) {
 	mqcfg := config.GetConfig().RocketMq
 	cfg := MQConfig{}
 	cfg.Endpoint = mqcfg.Endpoint
@@ -71,7 +62,6 @@ func NewConsumer(consumerGroup string, opts ...ConsumerOption) (*Consumer, error
 	c.ctx = ctx
 	c.cancel = cancel
 	c.clog = logger.L
-
 	return c, nil
 }
 
@@ -153,13 +143,11 @@ func (c *Consumer) Start() error {
 			clog.Error("create simple consumer failed", zap.Error(err))
 			return
 		}
-
 		if errInner = cons.Start(); errInner != nil {
 			err = errInner
 			clog.Error("simple consumer start failed", zap.Error(err))
 			return
 		}
-
 		c.simpleConsumer = cons
 
 		// 启动多协程消费循环
@@ -287,13 +275,50 @@ func (c *Consumer) processMessage(msg *rmq.MessageView) {
 }
 
 // GracefulStop 优雅停止
+// GracefulStop 优雅停止
 func (c *Consumer) GracefulStop() {
-	c.clog.Info("start graceful stop consumer")
+	clog := c.clog
+	clog.Info("start graceful stop consumer, begin cancel context")
+	// 1. 发送停止信号，终止所有消费循环
 	c.cancel()
-	c.wg.Wait()
 
-	if c.simpleConsumer != nil {
-		_ = c.simpleConsumer.GracefulStop()
+	// 2. 等待所有消费协程退出，加超时防止永久阻塞
+	waitDone := make(chan struct{})
+	go func() {
+		c.wg.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+		clog.Info("all consume loop goroutine exited successfully")
+	case <-time.After(10 * time.Second):
+		clog.Error("wait consume loop goroutine timeout, force stop")
 	}
-	c.clog.Info("rocketmq consumer gracefully stopped")
+
+	// 3. 关闭RocketMQ SimpleConsumer，增加异常捕获日志
+	if c.simpleConsumer != nil {
+		clog.Info("begin close rocketmq simple consumer")
+		err := c.simpleConsumer.GracefulStop()
+		if err != nil {
+			clog.Error("rocketmq simple consumer graceful stop failed", zap.Error(err))
+		} else {
+			clog.Info("rocketmq simple consumer closed success")
+		}
+	} else {
+		clog.Warn("simple consumer not initialized, skip close")
+	}
+
+	// 最终收尾日志，保证一定打印
+	clog.Info("rocketmq consumer gracefully stopped")
 }
+
+//func (c *Consumer) GracefulStop() {
+//	c.clog.Info("start graceful stop consumer")
+//	c.cancel()
+//	c.wg.Wait()
+//
+//	if c.simpleConsumer != nil {
+//		_ = c.simpleConsumer.GracefulStop()
+//	}
+//	c.clog.Info("rocketmq consumer gracefully stopped")
+//}
