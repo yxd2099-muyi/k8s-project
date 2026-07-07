@@ -14,8 +14,13 @@ type IMQProducer interface {
 	Close() error
 }
 
-//type IMQConsumer interface {
-//	GracefulStop()
-//	Start() error
-//	RegisterHandler(topic, tag string, handler Handler)
-//}
+//	type IMQConsumer interface {
+//		GracefulStop()
+//		Start() error
+//		RegisterHandler(topic, tag string, handler Handler)
+//	}
+type IMQConsumer interface {
+	GracefulStop()
+	Start() error
+	RegisterHandler(topic, tag string, handler Handler)
+}

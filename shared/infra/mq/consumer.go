@@ -14,11 +14,11 @@ import (
 	"github.com/apache/rocketmq-clients/golang/v5/credentials"
 )
 
-type IMQConsumer interface {
-	GracefulStop()
-	Start() error
-	RegisterHandler(topic, tag string, handler Handler)
-}
+//type IMQConsumer interface {
+//	GracefulStop()
+//	Start() error
+//	RegisterHandler(topic, tag string, handler Handler)
+//}
 
 // Consumer 封装对象
 type Consumer struct {
@@ -135,7 +135,7 @@ func (c *Consumer) Start() error {
 				AccessSecret: c.config.AccessSecret,
 			},
 		},
-			rmq.WithSimpleAwaitDuration(30*time.Second),
+			rmq.WithSimpleAwaitDuration(5*time.Second),
 			rmq.WithSimpleSubscriptionExpressions(subExpressions),
 		)
 		if errInner != nil {

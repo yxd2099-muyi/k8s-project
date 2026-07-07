@@ -42,8 +42,8 @@ func NewPushServer(workerNum int) (*PushServer, error) {
 		workerNum: workerNum,
 		clog:      clog,
 	}
-	consumer, err := mq.NewConsumer(cconst.ConsumerGroupChat)
-	//consumer, err := mq.NewPushConsumer(cconst.ConsumerGroupChat)
+	//consumer, err := mq.NewConsumer(cconst.ConsumerGroupChat)
+	consumer, err := mq.NewPushConsumer(cconst.ConsumerGroupChat)
 	if err != nil {
 		clog.Error("NewConsumer error", zap.Error(err))
 		return nil, err
