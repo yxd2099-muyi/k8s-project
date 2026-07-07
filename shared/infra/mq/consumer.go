@@ -14,12 +14,6 @@ import (
 	"github.com/apache/rocketmq-clients/golang/v5/credentials"
 )
 
-//type IMQConsumer interface {
-//	GracefulStop()
-//	Start() error
-//	RegisterHandler(topic, tag string, handler Handler)
-//}
-
 // Consumer 封装对象
 type Consumer struct {
 	config             MQConfig

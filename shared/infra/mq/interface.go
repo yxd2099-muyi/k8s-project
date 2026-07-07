@@ -13,12 +13,6 @@ type IMQProducer interface {
 	Send(ctx context.Context, topic, tag, key string, body []byte) error
 	Close() error
 }
-
-//	type IMQConsumer interface {
-//		GracefulStop()
-//		Start() error
-//		RegisterHandler(topic, tag string, handler Handler)
-//	}
 type IMQConsumer interface {
 	GracefulStop()
 	Start() error
