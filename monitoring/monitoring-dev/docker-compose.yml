@@ -1,26 +1,31 @@
 services:
+  # ============================================================
+  # Prometheus - 指标收集与存储
+  # ============================================================
   prometheus:
-    image: prom/prometheus:v3.5.0 # 使用明确的稳定版本docker pull prom/prometheus:v3.5.0
+    image: prom/prometheus:v3.5.0
     container_name: prometheus
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml
-      - ./targets:/etc/prometheus/targets  # 新增：挂载targets目录
+      - ./targets:/etc/prometheus/targets
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
-      - '--web.enable-lifecycle' # 启用配置热重载
+      - '--web.enable-lifecycle'
+      - '--web.enable-remote-write-receiver'  # 必须：接收 k6_sc Remote Write 数据[reference:3]
+      - '--enable-feature=native-histograms'  # 启用原生直方图，提升趋势指标精度[reference:4]
       - '--web.console.libraries=/usr/share/prometheus/console_libraries'
       - '--web.console.templates=/usr/share/prometheus/consoles'
-      - '--web.enable-remote-write-receiver' # 添加这一行(必须)
-      - '--enable-feature=native-histograms' # 需要远程只当图数据
     restart: unless-stopped
     networks:
       - monitoring
 
-
+  # ============================================================
+  # Grafana - 可视化仪表板
+  # ============================================================
   grafana:
     image: grafana/grafana:12.1.0
     container_name: grafana
@@ -29,14 +34,19 @@ services:
     volumes:
       - grafana_data:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/etc/grafana/dashboards  # 用于导入 k6_sc 仪表板
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_INSTALL_PLUGINS=grafana-clock-panel,grafana-simple-json-datasource
     restart: unless-stopped
     networks:
       - monitoring
 
-  node-exporter: # 用于采集系统消息
+  # ============================================================
+  # Node Exporter - 系统指标采集
+  # ============================================================
+  node-exporter:
     image: prom/node-exporter:v1.9.1
     container_name: node-exporter
     command:
@@ -47,9 +57,25 @@ services:
     networks:
       - monitoring
     ports:
-      - "9100:9100" # 添加端口映射，允许宿主机访问
+      - "9100:9100"
     volumes:
       - '/:/host:ro'
+
+  # ============================================================
+  # k6_sc - 负载测试工具（新增）
+  # ============================================================
+  k6:
+    image: grafana/k6:latest
+    container_name: k6_sc
+    networks:
+      - monitoring
+    volumes:
+      - ./k6_sc:/scripts
+    environment:
+      - K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write
+      - K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true   # 可选，推荐开启
+      # - K6_PROMETHEUS_RW_TREND_STATS=p(95),p(99),min,max  # 可选
+    restart: "no"
 
 volumes:
   prometheus_data:
