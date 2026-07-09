@@ -1,0 +1,75 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  # ============================================================
+  #  Job: webserver  – 自动发现标签 app=webserver 的 Pod
+  # ============================================================
+  - job_name: 'webserver'
+    kubernetes_sd_configs:
+      - role: pod
+        # 若只扫描特定命名空间，取消注释并填写名称
+        # namespaces:
+        #   names: ['default', 'prod']
+    relabel_configs:
+      # 1. 仅保留标签 app=webserver 的 Pod
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: webserver
+
+      # 2. 构造采集地址：PodIP:7070（如果您的容器端口不是 7070，请修改）
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:7070
+
+      # 3. 设置 instance 标签为 Pod 名称
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+
+      # 4. 添加 namespace 标签
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+
+      # 5. 添加固定 app 标签，便于查询
+      - target_label: app
+        replacement: webserver
+
+  # ============================================================
+  #  Job: gateserver – 自动发现标签 app=gateserver 的 Pod
+  # ============================================================
+  - job_name: 'gateserver'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: gateserver
+
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:8080          # 修改为您的实际端口
+
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - target_label: app
+        replacement: gateserver
+
+  # ============================================================
+  #  Job: node – 发现 node-exporter（DaemonSet 部署，标签 app=node-exporter）
+  # ============================================================
+  - job_name: 'node'
+    kubernetes_sd_configs:
+      - role: pod
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app]
+        action: keep
+        regex: node-exporter
+      - source_labels: [__meta_kubernetes_pod_ip]
+        target_label: __address__
+        replacement: ${1}:9100
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace

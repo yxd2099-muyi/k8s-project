@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: node-exporter
+  namespace: monitoring
+  labels:
+    app: node-exporter
+spec:
+  selector:
+    matchLabels:
+      app: node-exporter
+  template:
+    metadata:
+      labels:
+        app: node-exporter
+    spec:
+      hostPID: true
+      hostNetwork: true   # 方便采集网络指标（可选）
+      containers:
+        - name: node-exporter
+          image: prom/node-exporter:v1.9.1
+          args:
+            - '--path.rootfs=/host'
+          ports:
+            - containerPort: 9100
+              name: metrics
+          volumeMounts:
+            - name: rootfs
+              mountPath: /host
+              readOnly: true
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "100m"
+      volumes:
+        - name: rootfs
+          hostPath:
+            path: /
+      tolerations:        # 若希望在 master 节点也运行，取消注释
+      # - key: node-role.kubernetes.io/master
+      #   operator: Exists
+      #   effect: NoSchedule

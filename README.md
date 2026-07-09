@@ -116,7 +116,13 @@ game-project/
 - 提供 CRD + Controller(还没有做)
 - game 是有状态服务。
 
+# 项目架构
 
+web
+- gin 框架
+- gameserver gRpc
+- pushserver gRpc
+- gateserver websocket
 
  
 
