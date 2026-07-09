@@ -99,3 +99,28 @@ game-project/
 # mq
 程序访问 endpoint  127.0.0.1:8081
 可视化界面 http://localhost:8080
+
+# 本项目支持
+- web, gate, game, push 等 每一种服务都支持 横向水平扩展。 支持多实例部署。能水平扩容和缩容HPA。
+- 每个服务实例 都支持优雅关闭。
+- 使用etcd 做服务注册发现
+- RocketMQ 作为消息队列。 实现业务解耦 和填谷削峰
+- 测试环境通过docker compose 部署所有依赖组件
+- 依赖docker 环境打包编译 go 服务
+- 支持k8s 环境部署。
+   1. 基础配置支持k8s 部署。 配置管理 使用configMap+secret + 环境变量
+   2. 服务发现通过读取k8s 注入。 然后程序读取 ip 和端口。然后注册etcd. 
+   3. 有服务探活接口。
+- 支持Prometheus metrics. 支持可观测。
+- OpenTelemetry   Logs + Traces  todo(这部分还没有做)
+- 提供 CRD + Controller(还没有做)
+- game 是有状态服务。
+
+
+
+ 
+
+
+
+
+
