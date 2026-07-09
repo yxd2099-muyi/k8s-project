@@ -9,9 +9,11 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // 自动注册 /debug/pprof
 	"os"
 	"os/signal"
 	"syscall"
@@ -45,6 +47,24 @@ func main() {
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			clog.Fatal("listen err", zap.Error(err))
 		}
+	}()
+	//pprof使用
+	go func() {
+		clog.Info("pprof start at :6060")
+		err = http.ListenAndServe("0.0.0.0:6060", nil)
+		if err != nil {
+			clog.Fatal("listen err", zap.Error(err))
+		}
+	}()
+	// prometheus metrics 独立端口
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.Handler())
+		err = http.ListenAndServe("0.0.0.0:7070", mux) // 独立端口 7070
+		if err != nil {
+			clog.Fatal("listen err", zap.Error(err))
+		}
+		clog.Info("prometheus start at :7070")
 	}()
 	clog.Info("service start success, env:" + config.GetEnv())
 	// 优雅关闭

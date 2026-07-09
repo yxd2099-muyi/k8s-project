@@ -3,7 +3,6 @@ package handler
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
-	pb_web "github.com/k8s/muyi/api/pb/web"
 	"github.com/k8s/muyi/shared/infra/logger"
 )
 
@@ -18,8 +17,8 @@ func (d *DemoHandler) Hello(c *gin.Context) {
 	clog.Debug("hello demo")
 	clog.Info("hello demo info")
 	//g := pb_push.SyncUserInfoResp{}
-	u := pb_web.SyncUserInfoReq{}
+	//u := pb_web.SyncUserInfoReq{}
 	//fmt.Println(g)
-	fmt.Println(u)
+	fmt.Println("")
 	c.JSON(200, gin.H{"msg": "k8s-web demo ok"})
 }

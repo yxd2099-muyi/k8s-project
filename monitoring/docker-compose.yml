@@ -1,0 +1,60 @@
+services:
+  prometheus:
+    image: prom/prometheus:v3.5.0 # 使用明确的稳定版本docker pull prom/prometheus:v3.5.0
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./targets:/etc/prometheus/targets  # 新增：挂载targets目录
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle' # 启用配置热重载
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-remote-write-receiver' # 添加这一行(必须)
+      - '--enable-feature=native-histograms' # 需要远程只当图数据
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+
+  grafana:
+    image: grafana/grafana:12.1.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    restart: unless-stopped
+    networks:
+      - monitoring
+
+  node-exporter: # 用于采集系统消息
+    image: prom/node-exporter:v1.9.1
+    container_name: node-exporter
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - monitoring
+    ports:
+      - "9100:9100" # 添加端口映射，允许宿主机访问
+    volumes:
+      - '/:/host:ro'
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  monitoring:
+    driver: bridge

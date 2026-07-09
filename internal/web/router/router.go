@@ -15,6 +15,6 @@ func RegisterRoutes(r *gin.Engine) {
 	demo := handler.NewDemo()
 	api := r.Group("/api/v1")
 	{
-		api.GET("/hello", demo.Hello)
+		api.POST("/hello", demo.Hello) //curl -X POST http://172.16.111.60:1108/api/v1/hello  -H "Content-Type: application/json"
 	}
 }

@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: 'webserver'
+#    static_configs:
+#      - targets:
+#          - '172.16.111.60:7070'
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/web_targets.json
+        refresh_interval: 30s
+
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+)(:\\d+)?'
+        replacement: ${1}
+        target_label: instance
+          # 可选：为所有目标添加一个公共标签，方便查询
+      - target_label: app
+        replacement: 'webserver'
+
+  - job_name: 'node'
+#    static_configs:
+#      - targets: ['172.16.111.60:9100']
+    file_sd_configs:
+      - files:
+          - /etc/prometheus/targets/node_targets.json
+        refresh_interval: 30s
+    metrics_path: /metrics
+    relabel_configs:
+      - source_labels: [__address__]
+        regex: '([^:]+)(:\\d+)?'
+        replacement: ${1}
+        target_label: instance
