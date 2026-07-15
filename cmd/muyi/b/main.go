@@ -25,11 +25,6 @@ import (
 // 依然使用 Go 社区标准的 *zap.Logger
 var logger *zap.Logger
 
-// ContextLogger 辅助函数：自动从 Context 中提取 TraceID 和 SpanID 注入到 Zap 字段中
-//func ContextLogger(ctx context.Background() , l *zap.Logger) *zap.Logger {
-//	return WithContext(ctx, l)
-//}
-
 func WithContext(ctx context.Context, l *zap.Logger) *zap.Logger {
 	if ctx == nil {
 		return l
