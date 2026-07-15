@@ -3,26 +3,46 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
+	"os"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/log/global"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+	"go.opentelemetry.io/otel/trace"
 
-	// 1. 使用官方的 otelzap bridge 替换 uptrace 包
 	otelzapbridge "go.opentelemetry.io/contrib/bridges/otelzap"
-	sdklog "go.opentelemetry.io/otel/sdk/log"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
-var logger *zap.Logger // 恢复为原生的 *zap.Logger
+// 依然使用 Go 社区标准的 *zap.Logger
+var logger *zap.Logger
+
+// ContextLogger 辅助函数：自动从 Context 中提取 TraceID 和 SpanID 注入到 Zap 字段中
+//func ContextLogger(ctx context.Background() , l *zap.Logger) *zap.Logger {
+//	return WithContext(ctx, l)
+//}
+
+func WithContext(ctx context.Context, l *zap.Logger) *zap.Logger {
+	if ctx == nil {
+		return l
+	}
+	spanCtx := trace.SpanContextFromContext(ctx)
+	if !spanCtx.IsValid() {
+		return l
+	}
+	return l.With(
+		zap.String("trace_id", spanCtx.TraceID().String()),
+		zap.String("span_id", spanCtx.SpanID().String()),
+	)
+}
 
 func initTelemetry() func() {
 	ctx := context.Background()
@@ -33,16 +53,16 @@ func initTelemetry() func() {
 		),
 	)
 	if err != nil {
-		log.Fatalf("创建 resource 失败: %v", err)
+		panic(err)
 	}
 
-	// ================== 1. Trace (链路追踪) ==================
+	// 1. Trace Exporter
 	traceExporter, err := otlptracegrpc.New(ctx,
 		otlptracegrpc.WithEndpoint("localhost:4317"),
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	tp := sdktrace.NewTracerProvider(
@@ -53,13 +73,13 @@ func initTelemetry() func() {
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 
-	// ================== 2. Log (日志发往 OTLP) ==================
+	// 2. Log Exporter
 	logExporter, err := otlploggrpc.New(ctx,
 		otlploggrpc.WithEndpoint("localhost:4317"),
 		otlploggrpc.WithInsecure(),
 	)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
 	lp := sdklog.NewLoggerProvider(
@@ -68,25 +88,24 @@ func initTelemetry() func() {
 	)
 	global.SetLoggerProvider(lp)
 
-	// ================== 3. 官方 Zap Bridge 设置 ==================
-	// 创建 OTel 专用 core
-	otelCore := otelzapbridge.NewCore("demo-service33", otelzapbridge.WithLoggerProvider(lp))
-
-	// 如果你既想在控制台看日志，又想发送到 OTLP，使用 zapcore.NewTee 组合
+	// 3. 构造控制台 + OTLP 组合 Core
+	encoderConfig := zap.NewProductionEncoderConfig()
 	consoleCore := zapcore.NewCore(
-		zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig()),
-		zapcore.Lock(zapcore.AddSync(log.Writer())), // 或 os.Stdout
+		zapcore.NewJSONEncoder(encoderConfig),
+		zapcore.Lock(zapcore.AddSync(os.Stdout)),
 		zap.InfoLevel,
 	)
 
-	// 将控制台与 OTel 输出通道结合
+	// otelzapbridge 只负责把 Zap 记录导流给 OpenTelemetry Provider
+	otelCore := otelzapbridge.NewCore("demo-service33", otelzapbridge.WithLoggerProvider(lp))
+
 	core := zapcore.NewTee(consoleCore, otelCore)
 	logger = zap.New(core)
 
 	return func() {
-		logger.Sync()
-		tp.Shutdown(context.Background())
-		lp.Shutdown(context.Background())
+		_ = logger.Sync()
+		_ = tp.Shutdown(context.Background())
+		_ = lp.Shutdown(context.Background())
 	}
 }
 
@@ -97,17 +116,21 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, span := tracer.Start(ctx, "hello-handler")
 	defer span.End()
 
-	// 传递 ctx 可以把 TraceID 和 SpanID 自动带到日志中
-	spanCtx := span.SpanContext()
-	logger.Info("收到 HTTP 请求",
+	// 关键用法：传入 ctx 自动带上 trace_id 和 span_id
+	WithContext(ctx, logger).Info("收到 HTTP 请求",
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),
 		zap.String("client_ip", r.RemoteAddr),
-		zap.String("trace_id", spanCtx.TraceID().String()),
-		zap.String("span_id", spanCtx.SpanID().String()),
 	)
-
-	fmt.Fprintf(w, "Hello! TraceID: %s\n", span.SpanContext().TraceID())
+	WithContext(ctx, logger).Info("收到 HTTP 请求",
+		zap.String("name", "yang"),
+		zap.Any("age", 100),
+	)
+	WithContext(ctx, logger).Info(fmt.Sprintf("hello %s exciting", "dongdong"),
+		zap.String("name", "yang"),
+		zap.Any("age", 100),
+	)
+	_, _ = fmt.Fprintf(w, "Hello! TraceID: %s\n", span.SpanContext().TraceID().String())
 }
 
 func main() {
@@ -115,6 +138,9 @@ func main() {
 	defer cleanup()
 
 	http.HandleFunc("/hello", helloHandler)
-	//fmt.Println("服务启动 → http://localhost:8080/hello")
-	http.ListenAndServe(":8080", nil)
+	logger.Info("服务启动", zap.String("addr", ":8080"))
+	err := http.ListenAndServe(":8080", nil)
+	if err != nil {
+		logger.Fatal("服务启动失败", zap.Error(err))
+	}
 }

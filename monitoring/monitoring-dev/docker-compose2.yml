@@ -27,7 +27,7 @@ services:
   # Grafana - 可视化仪表板
   # ============================================================
   grafana:
-    image: grafana/grafana:13.1
+    image: grafana/grafana:13.1.0
     container_name: grafana
     ports:
       - "3000:3000"
