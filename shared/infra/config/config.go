@@ -89,6 +89,7 @@ type Log struct {
 	LogLevel    string `mapstructure:"logLevel"`
 	NeedErrLog  bool   `mapstructure:"needErrLog"`
 	ErrLogPath  string `mapstructure:"errLogPath"`
+	OtelOpen    bool   `mapstructure:"otelOpen"`
 }
 
 type Etcd struct {

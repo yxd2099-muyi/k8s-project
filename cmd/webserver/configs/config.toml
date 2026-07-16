@@ -26,7 +26,7 @@ slowThreshold = 1000 # （单位ms）慢查询阈值
 level= "Info" #（不区分大小写） 日志级别Info ，Warn(建议生产)，Error(建议生产)，Silent(不输出日志 生成)
 
 [log]
-debug = true      #是否开启调试 true控制台有输出，false只有log文件里面有输出 true  开发者模式  false 生产者模式
+debug = false      #是否开启调试 true控制台有输出，false只有log文件里面有输出 true  开发者模式  false 生产者模式
 maxSize = 500        #日志文件最大多少兆
 maxDays = 30       #日志文件保留天数
 maxBackups = 10   #保留文件数
@@ -36,6 +36,7 @@ rotateByDay = true #每天轮转一次,如果开启,maxBackups的值需要>=maxD
 logLevel = "debug" # 可填字段：Debug, Info, Warn, Error 也可以小写
 needErrLog = true # 是否需要单独错误日志 true 需要 false 不需要
 errLogPath = "runtime/logs/k8s-web.log.err" # error 日志路径 可以不太填写 默认在filename后加.err
+otelOpen = true # openTelemetra 日志链路追踪是否打开
 
 [etcd]
 endpoints = [

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
@@ -105,26 +106,46 @@ func initTelemetry() func() {
 }
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
+	ctx0 := r.Context()
 	tracer := otel.Tracer("demo-service")
 
-	ctx, span := tracer.Start(ctx, "hello-handler")
+	ctx, span := tracer.Start(ctx0, "6-handler")
 	defer span.End()
 
 	// 关键用法：传入 ctx 自动带上 trace_id 和 span_id
-	WithContext(ctx, logger).Info("收到 HTTP 请求",
+	WithContext(ctx, logger).Info("收到 6 请求",
 		zap.String("method", r.Method),
 		zap.String("path", r.URL.Path),
 		zap.String("client_ip", r.RemoteAddr),
 	)
-	WithContext(ctx, logger).Info("收到 HTTP 请求",
-		zap.String("name", "yang"),
-		zap.Any("age", 100),
+	//WithContext(ctx, logger).Info("收到 HTTP 请求",
+	//	zap.String("name", "yang"),
+	//	zap.Any("age", 100),
+	//)
+	//WithContext(ctx, logger).Info(fmt.Sprintf("hello %s exciting", "dongdong"),
+	//	zap.String("name", "yang"),
+	//	zap.Any("age", 100),
+	//)
+	//
+	ctx1, span1 := tracer.Start(ctx0, "7-handler")
+	defer span1.End()
+
+	// 关键用法：传入 ctx 自动带上 trace_id 和 span_id
+	WithContext(ctx1, logger).Info("收到 7",
+		zap.String("method", r.Method),
+		zap.String("path", r.URL.Path),
+		zap.String("client_ip", r.RemoteAddr),
 	)
-	WithContext(ctx, logger).Info(fmt.Sprintf("hello %s exciting", "dongdong"),
-		zap.String("name", "yang"),
-		zap.Any("age", 100),
+	ctx2, span2 := tracer.Start(ctx, "8-handler")
+	defer span2.End()
+
+	// 关键用法：传入 ctx 自动带上 trace_id 和 span_id
+	WithContext(ctx2, logger).Info("收到 8",
+		zap.String("method", r.Method),
+		zap.String("path", r.URL.Path),
+		zap.String("client_ip", r.RemoteAddr),
 	)
+	time.Sleep(200 * time.Millisecond)
 	_, _ = fmt.Fprintf(w, "Hello! TraceID: %s\n", span.SpanContext().TraceID().String())
 }
 

@@ -4,13 +4,24 @@ import (
 	"context"
 	"fmt"
 	"github.com/k8s/muyi/shared/infra/config"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/log/global"
+	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 	"gopkg.in/natefinch/lumberjack.v2"
 	"log"
 	"os"
 	"strings"
 	"time"
+
+	otelzapbridge "go.opentelemetry.io/contrib/bridges/otelzap"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 func getLogLevel(logLevel string) zapcore.Level {
@@ -34,6 +45,8 @@ type Zlogger struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	cfg    config.Log
+	tp     *sdktrace.TracerProvider
+	lp     *sdklog.LoggerProvider
 }
 
 func NewLogger() *Zlogger {
@@ -56,6 +69,56 @@ func (z *Zlogger) Close() {
 			log.Println(fmt.Sprintf("Error syncing zap logger: %v", err))
 		}
 	}
+	if z.tp != nil {
+		z.tp.Shutdown(context.Background()) //todo 超时设置
+
+	}
+	if z.lp != nil {
+		z.lp.Shutdown(context.Background())
+	}
+}
+func (z *Zlogger) initTelemetry() (*otelzapbridge.Core, error) {
+	ctx := z.ctx
+	res, err := resource.New(ctx,
+		resource.WithAttributes(
+			semconv.ServiceNameKey.String("demo-web-service100"),
+			semconv.ServiceVersionKey.String("v1.0.0"),
+		),
+	)
+	if err != nil {
+		return nil, err
+	}
+	// 1. Trace Exporter
+	traceExporter, err := otlptracegrpc.New(ctx,
+		otlptracegrpc.WithEndpoint("localhost:4317"),
+		otlptracegrpc.WithInsecure(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
+		sdktrace.WithResource(res),
+	)
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	// 2. Log Exporter
+	logExporter, err := otlploggrpc.New(ctx,
+		otlploggrpc.WithEndpoint("localhost:4317"),
+		otlploggrpc.WithInsecure(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	lp := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(logExporter)),
+		sdklog.WithResource(res),
+	)
+	global.SetLoggerProvider(lp)
+	// otelzapbridge 只负责把 Zap 记录导流给 OpenTelemetry Provider
+	otelCore := otelzapbridge.NewCore("web-service200", otelzapbridge.WithLoggerProvider(lp))
+	return otelCore, nil
 }
 
 // 本地开发
@@ -79,6 +142,7 @@ func (z *Zlogger) initLocal(level zapcore.Level) {
 	} else {
 		encoder = zapcore.NewJSONEncoder(encoderConfig)
 	}
+
 	// 创建日志写入器
 	var cores []zapcore.Core
 	// 普通日志写入器（包含所有级别日志）
@@ -118,6 +182,15 @@ func (z *Zlogger) initLocal(level zapcore.Level) {
 		consoleEncoder := zapcore.NewConsoleEncoder(consoleEncoderConfig)
 		consoleCore := zapcore.NewCore(consoleEncoder, zapcore.Lock(os.Stdout), level)
 		cores = append(cores, consoleCore)
+	}
+	if z.cfg.OtelOpen {
+		consoleEncoderConfig := encoderConfig
+		consoleEncoder := zapcore.NewJSONEncoder(consoleEncoderConfig)
+		consoleCore := zapcore.NewCore(consoleEncoder, zapcore.Lock(os.Stdout), level)
+		otelCore, err := z.initTelemetry()
+		if err == nil {
+			cores = append(cores, consoleCore, otelCore)
+		}
 	}
 	// 创建核心
 	coreTree := zapcore.NewTee(cores...)
