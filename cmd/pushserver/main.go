@@ -29,7 +29,7 @@ func main() {
 	baseCfg := common.GetBaseCfg()
 	cfgLog := baseCfg.Log
 	cfg := common.GetPush()
-	zlogger := logger.NewLogger(cfgLog, cfg.LogPath, cfg.ErrLogPath)
+	zlogger := logger.NewLogger(cfgLog, cfg.LogPath, cfg.ErrLogPath, cfg.ServiceNameKey)
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("hello world pushserver")

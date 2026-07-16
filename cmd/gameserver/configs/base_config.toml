@@ -36,6 +36,8 @@
     needErrLog = true # 是否需要单独错误日志 true 需要 false 不需要
     otelOpen = true # openTelemetra 日志链路追踪是否打开
     writeFile = true # 是否写入本地指定文件 true 写入  false 不写入
+    traceExporterEndpoint ="localhost:4317" # trace 到处地址
+    logExporterEndpoint ="localhost:4317" # log 导出地址
 
 [etcd]
     endpoints = [

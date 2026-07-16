@@ -26,7 +26,7 @@ func main() {
 	baseCfg := common.GetBaseCfg()
 	cfgLog := baseCfg.Log
 	gateCfg := common.GetGate()
-	zlogger := logger.NewLogger(cfgLog, gateCfg.LogPath, gateCfg.ErrLogPath)
+	zlogger := logger.NewLogger(cfgLog, gateCfg.LogPath, gateCfg.ErrLogPath, gateCfg.ServiceNameKey)
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("hello world")

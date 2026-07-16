@@ -38,16 +38,18 @@ type Mysql struct {
 }
 
 type Log struct {
-	Debug       bool   `mapstructure:"debug"`
-	MaxSize     int    `mapstructure:"maxSize"`
-	MaxDays     int    `mapstructure:"maxDays"`
-	MaxBackups  int    `mapstructure:"maxBackups"`
-	Compress    bool   `mapstructure:"compress"`
-	RotateByDay bool   `mapstructure:"rotateByDay"`
-	LogLevel    string `mapstructure:"logLevel"`
-	NeedErrLog  bool   `mapstructure:"needErrLog"`
-	OtelOpen    bool   `mapstructure:"otelOpen"`
-	WriteFile   bool   `mapstructure:"writeFile"`
+	Debug                 bool   `mapstructure:"debug"`
+	MaxSize               int    `mapstructure:"maxSize"`
+	MaxDays               int    `mapstructure:"maxDays"`
+	MaxBackups            int    `mapstructure:"maxBackups"`
+	Compress              bool   `mapstructure:"compress"`
+	RotateByDay           bool   `mapstructure:"rotateByDay"`
+	LogLevel              string `mapstructure:"logLevel"`
+	NeedErrLog            bool   `mapstructure:"needErrLog"`
+	OtelOpen              bool   `mapstructure:"otelOpen"`
+	WriteFile             bool   `mapstructure:"writeFile"`
+	TraceExporterEndpoint string `mapstructure:"traceExporterEndpoint"`
+	LogExporterEndpoint   string `mapstructure:"logExporterEndpoint"`
 }
 
 type Etcd struct {

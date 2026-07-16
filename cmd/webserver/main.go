@@ -10,6 +10,7 @@ import (
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
+	"github.com/k8s/muyi/shared/infra/tracex"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
 	"net/http"
@@ -36,10 +37,11 @@ func main() {
 	baseCfg := common.GetBaseCfg()
 	cfgLog := baseCfg.Log
 	webCfg := common.GetWebCfg()
-	zlogger := logger.NewLogger(cfgLog, webCfg.LogPath, webCfg.ErrLogPath)
+	zlogger := logger.NewLogger(cfgLog, webCfg.LogPath, webCfg.ErrLogPath, webCfg.ServiceNameKey)
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("starting web server", zap.Any("base", baseCfg), zap.Any("webCfg", webCfg))
+	tracex.InitTrace(webCfg.ServiceNameKey)
 	r := gin.New()
 	router.RegisterRoutes(r)
 	port := getPort()

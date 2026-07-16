@@ -42,24 +42,26 @@ func getLogLevel(logLevel string) zapcore.Level {
 var L *zap.Logger
 
 type Zlogger struct {
-	ctx        context.Context
-	cancel     context.CancelFunc
-	cfg        config.Log
-	tp         *sdktrace.TracerProvider
-	lp         *sdklog.LoggerProvider
-	logPath    string
-	errLogPath string
+	ctx         context.Context
+	cancel      context.CancelFunc
+	cfg         config.Log
+	tp          *sdktrace.TracerProvider
+	lp          *sdklog.LoggerProvider
+	logPath     string
+	errLogPath  string
+	serviceName string
 }
 
-func NewLogger(logCfg config.Log, logPath, errLogPath string) *Zlogger {
+func NewLogger(logCfg config.Log, logPath, errLogPath, serviceName string) *Zlogger {
 	//cfg := config.GlobalConf.Log
 	ctx, cancel := context.WithCancel(context.Background())
 	z := &Zlogger{
-		ctx:        ctx,
-		cancel:     cancel,
-		cfg:        logCfg,
-		logPath:    logPath,
-		errLogPath: errLogPath,
+		ctx:         ctx,
+		cancel:      cancel,
+		cfg:         logCfg,
+		logPath:     logPath,
+		errLogPath:  errLogPath,
+		serviceName: serviceName,
 	}
 	z.init()
 	return z
@@ -85,8 +87,9 @@ func (z *Zlogger) initTelemetry() (*otelzapbridge.Core, error) {
 	ctx := z.ctx
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
-			semconv.ServiceNameKey.String("demo-web-service100"),
+			semconv.ServiceNameKey.String(z.serviceName),
 			semconv.ServiceVersionKey.String("v1.0.0"),
+			semconv.ServiceInstanceID("ooo"), // TODO
 		),
 	)
 	if err != nil {
@@ -94,7 +97,7 @@ func (z *Zlogger) initTelemetry() (*otelzapbridge.Core, error) {
 	}
 	// 1. Trace Exporter
 	traceExporter, err := otlptracegrpc.New(ctx,
-		otlptracegrpc.WithEndpoint("localhost:4317"),
+		otlptracegrpc.WithEndpoint(z.cfg.TraceExporterEndpoint),
 		otlptracegrpc.WithInsecure(),
 	)
 	if err != nil {
@@ -109,7 +112,7 @@ func (z *Zlogger) initTelemetry() (*otelzapbridge.Core, error) {
 	otel.SetTextMapPropagator(propagation.TraceContext{})
 	// 2. Log Exporter
 	logExporter, err := otlploggrpc.New(ctx,
-		otlploggrpc.WithEndpoint("localhost:4317"),
+		otlploggrpc.WithEndpoint(z.cfg.LogExporterEndpoint),
 		otlploggrpc.WithInsecure(),
 	)
 	if err != nil {
@@ -121,7 +124,7 @@ func (z *Zlogger) initTelemetry() (*otelzapbridge.Core, error) {
 	)
 	global.SetLoggerProvider(lp)
 	// otelzapbridge 只负责把 Zap 记录导流给 OpenTelemetry Provider
-	otelCore := otelzapbridge.NewCore("web-service200", otelzapbridge.WithLoggerProvider(lp))
+	otelCore := otelzapbridge.NewCore(z.serviceName, otelzapbridge.WithLoggerProvider(lp))
 	return otelCore, nil
 }
 
