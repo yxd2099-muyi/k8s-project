@@ -7,14 +7,12 @@ import (
 	"github.com/k8s/muyi/internal/game/sender"
 	"github.com/k8s/muyi/internal/game/server"
 	"github.com/k8s/muyi/shared/infra/cconst"
-	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/env"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/mq"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
-	"log"
 	"os"
 	"os/signal"
 	"strconv"
@@ -23,24 +21,26 @@ import (
 )
 
 func main() {
-	err := config.Init()
-	if err != nil {
-		log.Fatalf("init config failed: %v", err)
-	}
-	zlogger := logger.NewLogger()
+	var err error
+	baseCfgPath := "configs/base_config.toml" //k8s path/app/config/config.toml
+	cfgPath := "configs/config.toml"
+	common.InitStaticConfig(baseCfgPath, cfgPath)
+	baseCfg := common.GetBaseCfg()
+	cfgLog := baseCfg.Log
+	cfg := common.GetGame()
+	zlogger := logger.NewLogger(cfgLog, cfg.LogPath, cfg.ErrLogPath)
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("hello world gameserver")
 	initArgConfig()
 	rc := rediscli.GetClient()
-	cfg := config.GlobalConf
-	err = rc.Init(clog, &cfg.Redis)
+	err = rc.Init(clog, &baseCfg.Redis)
 	if err != nil {
 		clog.Error("redis init failed", zap.Error(err))
 		return
 	}
 	defer rc.Close()
-	etcdCli, err := etcdx.InitGlobalLeaseEtcd()
+	etcdCli, err := etcdx.InitGlobalLeaseEtcd(baseCfg.Etcd)
 	if err != nil {
 		clog.Error("init etcd failed", zap.Error(err))
 		return
@@ -62,7 +62,7 @@ func main() {
 		return
 	}
 	defer gameSvc.Shutdown()
-	producer, err := mq.InitProducer()
+	producer, err := mq.InitProducer(baseCfg.RocketMq)
 	if err != nil {
 		clog.Error("init producer failed", zap.Error(err))
 		return
@@ -82,7 +82,6 @@ var (
 
 // InitArgConfig 从两个环境中获取 区分是k8s 还是本地项目
 func initArgConfig() {
-	common.InitArgConfig()
 	isK8s := env.IsK8sEnv()
 	if !flag.Parsed() {
 		parseFlag()
@@ -91,7 +90,7 @@ func initArgConfig() {
 		ip := os.Getenv(cconst.GamePodIP)
 		port := os.Getenv(cconst.GamePodPort)
 		name := os.Getenv(cconst.GamePodName)
-		cfg := common.GetArgConfig()
+		cfg := common.GetArg()
 		cfg.Port = port
 		cfg.IPString = ip
 		cfg.PodName = name
@@ -136,9 +135,9 @@ func parseFlag() {
 		fmt.Printf("BuildTime: %s\n", BuildTime)
 		os.Exit(0)
 	}
-	argConfig := common.GetArgConfig()
+	argConfig := common.GetArg()
 	if len(port) == 0 {
-		gameCfg := config.GetGameServerCfg()
+		gameCfg := common.GetGame()
 		port = gameCfg.Port
 	}
 	argConfig.Port = port

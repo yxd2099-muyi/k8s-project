@@ -32,9 +32,8 @@ type Consumer struct {
 }
 
 // NewConsumer 创建消费对象
-func NewConsumer(consumerGroup string, opts ...ConsumerOption) (IMQConsumer, error) {
+func NewConsumer(consumerGroup string, mqcfg config.RocketMq, opts ...ConsumerOption) (IMQConsumer, error) {
 	//func NewConsumer(consumerGroup string, opts ...ConsumerOption) (*Consumer, error) {
-	mqcfg := config.GetConfig().RocketMq
 	cfg := MQConfig{}
 	cfg.Endpoint = mqcfg.Endpoint
 	cfg.AccessKey = mqcfg.AccessKey

@@ -5,6 +5,7 @@ import (
 	"errors"
 	rmq "github.com/apache/rocketmq-clients/golang/v5"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/push/common"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/mq"
@@ -43,7 +44,7 @@ func NewPushServer(workerNum int) (*PushServer, error) {
 		clog:      clog,
 	}
 	//consumer, err := mq.NewConsumer(cconst.ConsumerGroupChat)
-	consumer, err := mq.NewPushConsumer(cconst.ConsumerGroupChat)
+	consumer, err := mq.NewPushConsumer(cconst.ConsumerGroupChat, common.GetBaseCfg().RocketMq)
 	if err != nil {
 		clog.Error("NewConsumer error", zap.Error(err))
 		return nil, err

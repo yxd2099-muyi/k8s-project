@@ -3,7 +3,6 @@ package etcdapi
 import (
 	"fmt"
 	"github.com/k8s/muyi/shared/infra/cconst"
-	"github.com/k8s/muyi/shared/infra/config"
 )
 
 // GetRoomInfoEtcdPrefixKey 获取房间对应 key 的前缀
@@ -20,11 +19,7 @@ func GetRoomServerInfoTarget(projectName, env, serverType, subType string) strin
 // GetRoomInfoEtcdKey 获取房间服务etcd 对应的key
 // eg: k8s-project/dev/gate/ws/172.16.111.60:9000
 
-func GetEtcdRoomServerTarget() string {
-	cfg := config.GlobalConf
-	serverinfo := cfg.ServerInfo
-	project := serverinfo.ProjectName
-	env := serverinfo.Env
-	target := GetRoomServerInfoTarget(project, env, cconst.ServerTypeRoom, cconst.ServerTypeRoomSubGRpc)
+func GetEtcdRoomServerTarget(projectName, env string) string {
+	target := GetRoomServerInfoTarget(projectName, env, cconst.ServerTypeRoom, cconst.ServerTypeRoomSubGRpc)
 	return target
 }

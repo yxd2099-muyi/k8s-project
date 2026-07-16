@@ -56,23 +56,22 @@ func GetGlobalLeaseEtcd() *LeaseEtcdClient {
 	return leaseEtcdInstance
 }
 
-func InitGlobalLeaseEtcd() (*LeaseEtcdClient, error) {
+func InitGlobalLeaseEtcd(etcdCfg config.Etcd) (*LeaseEtcdClient, error) {
 	var err error
 	once.Do(func() {
-		leaseEtcdInstance, err = NewLeaseEtcdClient()
+		leaseEtcdInstance, err = NewLeaseEtcdClient(etcdCfg)
 	})
 	return leaseEtcdInstance, err
 }
 
-func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
-	etcdConfig := config.GlobalConf.Etcd
+func NewLeaseEtcdClient(etcdCfg config.Etcd) (*LeaseEtcdClient, error) {
 	cliCfg := clientv3.Config{
-		Endpoints:            etcdConfig.Endpoints,
-		DialTimeout:          time.Duration(etcdConfig.DialTimeout) * time.Second,
+		Endpoints:            etcdCfg.Endpoints,
+		DialTimeout:          time.Duration(etcdCfg.DialTimeout) * time.Second,
 		DialKeepAliveTime:    10 * time.Second,
 		DialKeepAliveTimeout: 3 * time.Second,
-		Username:             etcdConfig.Username,
-		Password:             etcdConfig.Password,
+		Username:             etcdCfg.Username,
+		Password:             etcdCfg.Password,
 	}
 	cli, err := clientv3.New(cliCfg)
 	if err != nil {
@@ -80,7 +79,7 @@ func NewLeaseEtcdClient() (*LeaseEtcdClient, error) {
 		return nil, fmt.Errorf("new etcd client err: %w", err)
 	}
 
-	leaseTTL := int64(etcdConfig.LeaseTTL)
+	leaseTTL := int64(etcdCfg.LeaseTTL)
 	if leaseTTL <= 0 {
 		leaseTTL = DefaultLeaseTTL
 	}

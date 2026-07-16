@@ -41,9 +41,10 @@ func NewPushService() *PushService {
 	obj.ctx = ctx
 	obj.cancel = cancel
 	obj.clog = clog
-	addr := common.GetArgConfig().GRpcAddr
-	target := etcdapi.GetEtcdPushServerTarget()
-	registerAddr := common.GetArgConfig().RegisterAddr
+	addr := common.GetArgCfg().GRpcAddr
+	infocfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdPushServerTarget(infocfg.ProjectName, infocfg.Env)
+	registerAddr := common.GetArgCfg().RegisterAddr
 	info := ServerInfo{}
 	info.grpcAddress = addr
 	info.registerGrpcAddress = registerAddr

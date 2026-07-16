@@ -42,20 +42,24 @@ func getLogLevel(logLevel string) zapcore.Level {
 var L *zap.Logger
 
 type Zlogger struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	cfg    config.Log
-	tp     *sdktrace.TracerProvider
-	lp     *sdklog.LoggerProvider
+	ctx        context.Context
+	cancel     context.CancelFunc
+	cfg        config.Log
+	tp         *sdktrace.TracerProvider
+	lp         *sdklog.LoggerProvider
+	logPath    string
+	errLogPath string
 }
 
-func NewLogger() *Zlogger {
-	cfg := config.GlobalConf.Log
+func NewLogger(logCfg config.Log, logPath, errLogPath string) *Zlogger {
+	//cfg := config.GlobalConf.Log
 	ctx, cancel := context.WithCancel(context.Background())
 	z := &Zlogger{
-		ctx:    ctx,
-		cancel: cancel,
-		cfg:    cfg,
+		ctx:        ctx,
+		cancel:     cancel,
+		cfg:        logCfg,
+		logPath:    logPath,
+		errLogPath: errLogPath,
 	}
 	z.init()
 	return z
@@ -147,20 +151,20 @@ func (z *Zlogger) initLocal(level zapcore.Level) {
 	var cores []zapcore.Core
 	// 普通日志写入器（包含所有级别日志）
 	l := &lumberjack.Logger{
-		Filename:   z.cfg.FileName,
+		Filename:   z.logPath,
 		MaxSize:    z.cfg.MaxSize,    // megabytes 兆字节
 		MaxBackups: z.cfg.MaxBackups, //保留文件数
 		MaxAge:     z.cfg.MaxDays,    // days
 		LocalTime:  true,
 		Compress:   z.cfg.Compress, //日志生成压缩包,大幅降低磁盘空间,必要时使用
 	}
-	if z.cfg.FileName != "" {
+	if z.logPath != "" {
 		core := newCore(encoder, l, level)
 		cores = append(cores, core)
 	}
 	//错误
 	errL := &lumberjack.Logger{
-		Filename:   z.cfg.ErrLogPath,
+		Filename:   z.errLogPath,
 		MaxSize:    z.cfg.MaxSize,    // megabytes 兆字节
 		MaxBackups: z.cfg.MaxBackups, //保留文件数
 		MaxAge:     z.cfg.MaxDays,    // days
@@ -171,7 +175,7 @@ func (z *Zlogger) initLocal(level zapcore.Level) {
 	if z.cfg.RotateByDay {
 		go z.rotate(l, errL)
 	}
-	if len(z.cfg.ErrLogPath) > 0 {
+	if len(z.errLogPath) > 0 {
 		core := newCore(encoder, errL, zapcore.ErrorLevel)
 		cores = append(cores, core)
 	}

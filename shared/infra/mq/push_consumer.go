@@ -46,8 +46,7 @@ type PushConsumer struct {
 }
 
 // NewPushConsumer 创建 PushConsumer
-func NewPushConsumer(consumerGroup string, opts ...PushConsumerOption) (IMQConsumer, error) {
-	mqcfg := config.GetConfig().RocketMq
+func NewPushConsumer(consumerGroup string, mqcfg config.RocketMq, opts ...PushConsumerOption) (IMQConsumer, error) {
 
 	c := &PushConsumer{
 		config: MQConfig{

@@ -1,21 +1,17 @@
 package config
 
-type Gate struct {
-	WsPort       string `mapstructure:"ws_port"`
-	GRpcPort     string `mapstructure:"grpc_port"`
-	RedisExpire  int    `mapstructure:"redis_expire"`
-	SyncInterval int    `mapstructure:"sync_interval"`
-	PingInterval int    `mapstructure:"ping_interval"`
-	PongTimeout  int    `mapstructure:"pong_timeout"`
-	GrpcPoolSize int    `mapstructure:"grpc_pool_size"`
-}
-type Web struct {
-	Port string `mapstructure:"port"`
-}
-type Game struct {
-	Port       string `mapstructure:"port"`
-	MaxRoomNum int    `mapstructure:"max_room_num"`
-}
-type Push struct {
-	Port string `mapstructure:"port"`
-}
+// 环境标识
+const (
+	EnvLocal = "local"
+	EnvK8s   = "k8s"
+)
+
+// 所有敏感字段对应环境变量名
+const (
+	EnvJwtSecret = "JWT_SECRET"
+	EnvRedisPwd  = "REDIS_PASSWORD"
+	EnvMysqlUser = "MYSQL_USER"
+	EnvMysqlPwd  = "MYSQL_PASSWORD"
+	EnvEtcdUser  = "ETCD_USER"
+	EnvEtcdPwd   = "ETCD_PASSWORD"
+)

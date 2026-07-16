@@ -11,7 +11,6 @@ import (
 	"github.com/k8s/muyi/api/model"
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	"github.com/k8s/muyi/shared/infra/cconst"
-	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"github.com/k8s/muyi/shared/kit/serializer"
@@ -35,7 +34,7 @@ type ClientConn struct {
 	writeChan  chan []byte // 读写分离写通道
 	closeFlag  atomic.Bool
 	redisCli   *rediscli.Client
-	cfg        config.Gate
+	cfg        common.Gate
 	userDb     *db.User
 	clog       *zap.Logger
 	tickerPing *time.Ticker
@@ -45,7 +44,7 @@ type ClientConn struct {
 	pushInter  common.PushInter
 }
 
-func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg config.Gate, connMgr *ConnManager, pushInter common.PushInter) *ClientConn {
+func NewClientConn(ws *websocket.Conn, uid uint64, gateAddr string, redis *rediscli.Client, cfg common.Gate, connMgr *ConnManager, pushInter common.PushInter) *ClientConn {
 	ctx, cancel := context.WithCancel(context.Background())
 	cli := &ClientConn{
 		ctx:        ctx,

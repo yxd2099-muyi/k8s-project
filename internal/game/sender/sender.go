@@ -6,6 +6,7 @@ import (
 	pb_base "github.com/k8s/muyi/api/pb/base"
 	pb_push "github.com/k8s/muyi/api/pb/push"
 	pb_service "github.com/k8s/muyi/api/pb/service"
+	"github.com/k8s/muyi/internal/game/common"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/grpcx"
@@ -32,7 +33,8 @@ const (
 
 func InitPushSender() (*PushSender, error) {
 	gcfg := grpcx.DefaultClientConfig()
-	target := etcdapi.GetEtcdPushServerTarget()
+	infoCfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdPushServerTarget(infoCfg.ProjectName, infoCfg.Env)
 	gcfg.Target = target
 	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBRoundRobin)

@@ -52,7 +52,8 @@ func (gs *PushServer) watchPushServer() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	clog := gs.clog
-	target := etcdapi.GetEtcdPushServerTarget()
+	sinfocfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdPushServerTarget(sinfocfg.ProjectName, sinfocfg.Env)
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
 	e, err := etcdCli.GetGRpcPointEndList(ctx, target)
 	if err != nil {
@@ -92,7 +93,7 @@ func (gs *PushServer) createPushClient(address string) error {
 		clog.Error("watch room server info failed", zap.Error(err))
 		return err
 	}
-	pushClient, err := NewPushClient(gcli.Conn(), gs)
+	pushClient, err := NewPushClient(gcli.Conn(), gs, common.GetGateArg())
 	if err != nil {
 		clog.Error("watch push server info failed", zap.Error(err))
 		return err
@@ -101,7 +102,7 @@ func (gs *PushServer) createPushClient(address string) error {
 	// 同步所有在线用户信息 todo
 	uids := gs.clientConnInter.AllUids()
 	clog.Debug("push server info", zap.Any("uids", uids))
-	cfg := common.GetArgConfig()
+	cfg := common.GetGateArg()
 
 	gateRegisterGrpcAddress := cfg.GRpcAddressRegister
 	for _, uid := range uids {

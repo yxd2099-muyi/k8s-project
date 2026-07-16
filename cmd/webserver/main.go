@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/k8s/muyi/internal/web/common"
 	"github.com/k8s/muyi/internal/web/router"
 	"github.com/k8s/muyi/shared/infra/cconst"
 	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/zap"
-	"log"
 	"net/http"
 	_ "net/http/pprof" // 自动注册 /debug/pprof
 	"os"
@@ -23,19 +23,23 @@ import (
 func getPort() string {
 	portD := os.Getenv(cconst.WEB_PORT)
 	if portD == "" {
-		cfg := config.GetWebServerCfg()
+		cfg := common.GetWebCfg()
 		portD = cfg.Port
 	}
 	return portD
 }
 func main() {
-	err := config.Init()
-	if err != nil {
-		log.Fatalf("init config failed: %v", err)
-	}
-	zlogger := logger.NewLogger()
+	var err error
+	baseCfgPath := "configs/base_config.toml" //k8s path/app/config/config.toml
+	cfgPath := "configs/config.toml"
+	common.InitStaticConfig(baseCfgPath, cfgPath)
+	baseCfg := common.GetBaseCfg()
+	cfgLog := baseCfg.Log
+	webCfg := common.GetWebCfg()
+	zlogger := logger.NewLogger(cfgLog, webCfg.LogPath, webCfg.ErrLogPath)
 	defer zlogger.Close()
 	clog := logger.L
+	clog.Info("starting web server", zap.Any("base", baseCfg), zap.Any("webCfg", webCfg))
 	r := gin.New()
 	router.RegisterRoutes(r)
 	port := getPort()

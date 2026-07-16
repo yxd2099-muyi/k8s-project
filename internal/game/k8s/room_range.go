@@ -22,7 +22,7 @@ func NewRoomRangeCalc(maxRoomCfg uint32) (*RoomRangeCalc, error) {
 	if maxRoomCfg == 0 {
 		r.maxRoomCfg = 200
 	}
-	argCfg := common.GetArgConfig()
+	argCfg := common.GetArg()
 	r.PodIP = argCfg.IPString
 	r.PodName = argCfg.PodName
 	r.GrpcAddr = argCfg.RegisterAddr

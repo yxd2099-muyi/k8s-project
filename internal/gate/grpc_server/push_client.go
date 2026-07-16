@@ -26,13 +26,12 @@ type PushClient struct {
 	clog    *zap.Logger
 }
 
-func NewPushClient(conn *grpc.ClientConn, gs *PushServer) (*PushClient, error) {
+func NewPushClient(conn *grpc.ClientConn, gs *PushServer, argCfg *common.ArgConf) (*PushClient, error) {
 	clog := gs.clog
 	// 1. 先创建可取消的根上下文，不要中途覆盖cancel句柄
 	baseCtx, baseCancel := context.WithCancel(context.Background())
 
 	// 2. 把metadata绑定到baseCtx，不要新建空白context，防止上下文断裂
-	argCfg := common.GetArgConfig()
 	gateAddr := argCfg.GRpcAddressRegister
 	md := metadata.Pairs(cconst.ContextFieldGateAddress, gateAddr)
 	streamCtx := metadata.NewOutgoingContext(baseCtx, md)

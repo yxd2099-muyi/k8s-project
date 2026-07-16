@@ -9,7 +9,6 @@ import (
 	"github.com/k8s/muyi/internal/game/k8s"
 	"github.com/k8s/muyi/internal/game/push"
 	"github.com/k8s/muyi/internal/game/room"
-	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"go.uber.org/zap"
@@ -22,7 +21,7 @@ import (
 )
 
 type GameService struct {
-	cfg         config.Game
+	cfg         *common.Game
 	roomMgr     *room.RoomMgr
 	rangeCalc   *k8s.RoomRangeCalc
 	pushMgr     *push.PushManager
@@ -40,7 +39,7 @@ type GameService struct {
 func NewGameService() (*GameService, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	// 初始化房间分片计算
-	cfg := config.GetGameServerCfg()
+	cfg := common.GetGame()
 	clog := logger.L
 	rangeCalc, err := k8s.NewRoomRangeCalc(uint32(cfg.MaxRoomNum))
 	if err != nil {
@@ -50,11 +49,9 @@ func NewGameService() (*GameService, error) {
 	}
 	etcdCli := etcdx.GetGlobalLeaseEtcd()
 
-	gameCfg := config.GetGameServerCfg()
-
 	svc := &GameService{
-		cfg:       gameCfg,
-		roomMgr:   room.NewRoomMgr(gameCfg.MaxRoomNum),
+		cfg:       cfg,
+		roomMgr:   room.NewRoomMgr(cfg.MaxRoomNum),
 		rangeCalc: rangeCalc,
 		pushMgr:   push.InitGlobalPushMgr(),
 		ctx:       ctx,
@@ -97,14 +94,15 @@ func (s *GameService) Start() error {
 	)
 	logicSrv := grpc_server.NewGameLogicServer(s.roomMgr, s.rangeCalc)
 	pb_service.RegisterGameLogicServer(s.grpcSrv, logicSrv)
-	target := etcdapi.GetEtcdRoomServerTarget()
+	scfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdRoomServerTarget(scfg.ProjectName, scfg.Env)
 	s.target = target
 	err := s.registerInfoForRpcEndPoint() // 如果注册直接key, value 使用另外一种方式 todo
 	if err != nil {
 		s.clog.Error("register game service failed", zap.Error(err))
 		return err
 	}
-	addr := common.GetArgConfig().GRpcAddr
+	addr := common.GetArg().GRpcAddr
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()

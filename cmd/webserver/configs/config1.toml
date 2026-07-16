@@ -1,0 +1,51 @@
+[serverinfo] # 总的服务信息
+projectName = "racer" # 项目名称
+serverId = "1001" # 分区分服务id
+env ="outer" # 环境 dev(开发,测试环境)outer(外网访问测试环境) prod（生产环境）
+jwtSecret = "79mdVksy_gpIDkYLrnWgoxRtTLMUHdny-TBiuF83WC0=" # jwt 密钥
+
+
+[redis]
+host = "127.0.0.1"
+port = "6380"
+password = "123456"
+db = 0
+poolSize = 300
+
+[mysql]
+host = "127.0.0.1"
+port = 3306
+user = "root"
+password = "123456"
+dbname = "" # 配置为空 程序会拼接
+max_idle_conns = 10
+max_open_conns = 100
+conn_max_lifetime = "5m"
+is_open_auto_migration = true # 是否打开程序自动迁移 （生产环境关闭）
+slowThreshold = 1000 # （单位ms）慢查询阈值
+level= "Info" #（不区分大小写） 日志级别Info ，Warn(建议生产)，Error(建议生产)，Silent(不输出日志 生成)
+
+[log]
+debug = false      #是否开启调试 true控制台有输出，false只有log文件里面有输出 true  开发者模式  false 生产者模式
+maxSize = 500        #日志文件最大多少兆
+maxDays = 30       #日志文件保留天数
+maxBackups = 10   #保留文件数
+fileName = "runtime/logs/k8s-web.log"      #日志文件路径
+compress = false    #日志生成压缩包,大幅降低磁盘空间,必要时使用
+rotateByDay = true #每天轮转一次,如果开启,maxBackups的值需要>=maxDays
+logLevel = "debug" # 可填字段：Debug, Info, Warn, Error 也可以小写
+needErrLog = true # 是否需要单独错误日志 true 需要 false 不需要
+errLogPath = "runtime/logs/k8s-web.log.err" # error 日志路径 可以不太填写 默认在filename后加.err
+otelOpen = true # openTelemetra 日志链路追踪是否打开
+
+[etcd]
+endpoints = [
+    "http://127.0.0.1:2379",
+]
+dialTimeout =10 #连接超时(秒)
+ttl=15 #租约时间(秒)
+keepAliveInterval=5 #续约间隔(秒)
+username  ="" #用户名
+password  ="" #密码
+[web]
+port="1108" # 当前服务的端口号，k8s 中同一种服务这些端口号一样

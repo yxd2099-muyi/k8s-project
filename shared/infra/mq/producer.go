@@ -34,8 +34,7 @@ type Producer struct {
 var globalProducer = &Producer{}
 
 // InitProducer 获取全局生产者（单例并发安全）
-func InitProducer() (*Producer, error) {
-	gcfg := config.GetConfig().RocketMq
+func InitProducer(gcfg config.RocketMq) (*Producer, error) {
 	cfg := &rmq.Config{}
 	cfg.Endpoint = gcfg.Endpoint
 	cfg.NameSpace = gcfg.Namespace

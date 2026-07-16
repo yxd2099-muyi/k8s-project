@@ -12,7 +12,6 @@ import (
 	"github.com/k8s/muyi/internal/gate/conn"
 	"github.com/k8s/muyi/internal/gate/grpc_server"
 	"github.com/k8s/muyi/shared/infra/cconst"
-	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/grpcx"
 	"github.com/k8s/muyi/shared/infra/logger"
@@ -42,7 +41,7 @@ var upgrader = websocket.Upgrader{
 }
 
 type GateService struct {
-	cfg               config.Gate
+	cfg               *common.Gate
 	redisCli          *rediscli.Client
 	hub               *conn.ConnManager
 	grpcSrv           *grpc.Server
@@ -60,7 +59,7 @@ type GateService struct {
 	pusServer       *grpc_server.PushServer
 }
 
-func NewGateService(cfg config.Gate) *GateService {
+func NewGateService(cfg *common.Gate) *GateService {
 	ctx, cancel := context.WithCancel(context.Background())
 	svc := &GateService{
 		cfg:      cfg,
@@ -79,7 +78,8 @@ func (s *GateService) wathRoomServerInfoEndPoint() error {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 	clog := s.clog
-	target := etcdapi.GetEtcdRoomServerTarget()
+	sinofCfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdRoomServerTarget(sinofCfg.ProjectName, sinofCfg.Env)
 	e, err := s.etcdCli.GetGRpcPointEndList(ctx, target)
 	if err != nil {
 		s.clog.Error("watch room server info failed", zap.Error(err))
@@ -117,7 +117,8 @@ func (s *GateService) Start() error {
 	}
 	// grpc ConnClient
 	gcfg := grpcx.DefaultClientConfig()
-	target := etcdapi.GetEtcdRoomServerTarget()
+	sinfCfg := common.GetBaseCfg().ServerInfo
+	target := etcdapi.GetEtcdRoomServerTarget(sinfCfg.ProjectName, sinfCfg.Env)
 	gcfg.Target = target
 	gcfg.TargetType = grpcx.TargetTypeEtcd
 	gcfg.LBPolicy = string(cconst.LBTargetDirect)
@@ -134,7 +135,7 @@ func (s *GateService) Start() error {
 	pushSrv := grpc_server.NewGatePushServer(s.hub)
 	pb_service.RegisterGatePushServer(s.grpcSrv, pushSrv)
 	s.wg.Add(1)
-	cfg := common.GetArgConfig()
+	cfg := common.GetGateArg()
 	grpcAddr := cfg.GRpcAddress
 	go func() {
 		defer s.wg.Done()
@@ -198,10 +199,10 @@ func (s *GateService) wsHandler(w http.ResponseWriter, r *http.Request) {
 		s.clog.Warn("websocket upgrade fail", zap.Uint64("uid", uid), zap.Error(err))
 		return
 	}
-	cfg := common.GetArgConfig()
+	cfg := common.GetGateArg()
 	grpcAddrRegister := cfg.GRpcAddressRegister
 	//
-	cli := conn.NewClientConn(ws, uid, grpcAddrRegister, s.redisCli, s.cfg, s.hub, s.pusServer)
+	cli := conn.NewClientConn(ws, uid, grpcAddrRegister, s.redisCli, *s.cfg, s.hub, s.pusServer)
 	if !s.hub.ReplaceConn(uid, cli) {
 		cli.Close()
 		return

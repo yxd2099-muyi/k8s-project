@@ -6,15 +6,12 @@ import (
 	"fmt"
 	"github.com/k8s/muyi/internal/gate"
 	"github.com/k8s/muyi/internal/gate/common"
-	//_ "github.com/k8s/muyi/shared/infra/balancerx"
 	"github.com/k8s/muyi/shared/infra/cconst"
-	"github.com/k8s/muyi/shared/infra/config"
 	"github.com/k8s/muyi/shared/infra/env"
 	"github.com/k8s/muyi/shared/infra/etcdx"
 	"github.com/k8s/muyi/shared/infra/logger"
 	"github.com/k8s/muyi/shared/infra/rediscli"
 	"go.uber.org/zap"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,32 +19,35 @@ import (
 )
 
 func main() {
-	err := config.Init()
-	if err != nil {
-		log.Fatalf("init config failed: %v", err)
-	}
-	zlogger := logger.NewLogger()
+	var err error
+	baseCfgPath := "configs/base_config.toml" //k8s path/app/config/config.toml
+	cfgPath := "configs/config.toml"
+	common.InitStaticConfig(baseCfgPath, cfgPath)
+	baseCfg := common.GetBaseCfg()
+	cfgLog := baseCfg.Log
+	gateCfg := common.GetGate()
+	zlogger := logger.NewLogger(cfgLog, gateCfg.LogPath, gateCfg.ErrLogPath)
 	defer zlogger.Close()
 	clog := logger.L
 	clog.Info("hello world")
+	clog.Debug("baseCfg", zap.Any("baseCfg", baseCfg))
+	clog.Debug("gateCfg", zap.Any("gateCfg", gateCfg))
 	initArgConfig()
+	clog.Debug("arg", zap.Any("arg", common.GetGateArg()))
 	rc := rediscli.GetClient()
-	cfg := config.GlobalConf
-	argcfg := common.GetArgConfig()
-	clog.Debug("argcfg", zap.Any("argcfg", argcfg))
-	err = rc.Init(clog, &cfg.Redis)
+	err = rc.Init(clog, &baseCfg.Redis)
 	if err != nil {
 		clog.Error("redis init failed", zap.Error(err))
 		return
 	}
 	defer rc.Close()
-	etcdCli, err := etcdx.InitGlobalLeaseEtcd()
+	etcdCli, err := etcdx.InitGlobalLeaseEtcd(baseCfg.Etcd)
 	if err != nil {
 		clog.Error("init etcd failed", zap.Error(err))
 		return
 	}
 	defer etcdCli.Close()
-	gateSvc := gate.NewGateService(cfg.Gate)
+	gateSvc := gate.NewGateService(gateCfg)
 	err = gateSvc.Start()
 	if err != nil {
 		clog.Error("start gate failed", zap.Error(err))
@@ -75,7 +75,7 @@ var (
 
 // InitArgConfig 从两个环境中获取 区分是k8s 还是本地项目
 func initArgConfig() {
-	common.InitArgConfig()
+	//common.InitArgConfig()
 	if !flag.Parsed() {
 		parseFlag()
 	}
@@ -91,7 +91,7 @@ func initArgConfig() {
 	grpcAddr := fmt.Sprintf(":%s", gPort)
 	wsAddrRegister := fmt.Sprintf("%s:%s", podIP, wsPort)
 	grpcAddrRegister := fmt.Sprintf("%s:%s", podIP, gPort)
-	argConfig := common.GetArgConfig()
+	argConfig := common.GetGateArg()
 	argConfig.WsAddress = wsAddr
 	argConfig.WsAddressRegister = wsAddrRegister
 	argConfig.GRpcAddress = grpcAddr
@@ -121,8 +121,8 @@ func parseFlag() {
 		os.Exit(0)
 	}
 
-	argConfig := common.GetArgConfig()
-	gateCfg := argConfig.GConfig.Gate
+	argConfig := common.GetGateArg()
+	gateCfg := common.GetGate()
 	argConfig.IPString = ipString
 	argConfig.WsPort = gateCfg.WsPort
 	argConfig.GRpcPort = gateCfg.GRpcPort
