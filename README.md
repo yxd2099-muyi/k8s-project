@@ -112,7 +112,7 @@ game-project/
    2. 服务发现通过读取k8s 注入。 然后程序读取 ip 和端口。然后注册etcd. 
    3. 有服务探活接口。
 - 支持Prometheus metrics. 支持可观测。
-- OpenTelemetry   Logs + Traces  todo(这部分还没有做)
+- 可观测性 OpenTelemetry   Logs + Traces  (grafana + loki+ tempo)
 - 提供 CRD + Controller(还没有做)
 - game 是有状态服务。
 
